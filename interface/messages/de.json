@@ -1,0 +1,9 @@
+{
+  "datasets": "Datensätze",
+  "collection": "Erhebung",
+  "processing": "Aufbereitung",
+  "annotation": "Beschriftung",
+  "visualization": "Visualisierung",
+  "users": "Benutzer",
+  "create_dataset": "Neuer Datensatz"
+}

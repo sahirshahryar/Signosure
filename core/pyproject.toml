@@ -1,0 +1,10 @@
+[project]
+name = "signosure-core"
+version = "1.0.0"
+description = "Core features for Signosure"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.118.0",
+    "sqlalchemy>=2.0.43",
+]

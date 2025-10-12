@@ -1,0 +1,7 @@
+[project]
+name = "signosure-processing"
+version = "1.0.0"
+description = "Signosure data processing pipelines"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []

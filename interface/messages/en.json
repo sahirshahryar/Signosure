@@ -1,0 +1,9 @@
+{
+  "datasets": "Datasets",
+  "collection": "Collection",
+  "processing": "Processing",
+  "annotation": "Annotation",
+  "visualization": "Visualization",
+  "users": "Users",
+  "create_dataset": "Create new dataset"
+}

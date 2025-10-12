@@ -1,0 +1,9 @@
+{
+  "datasets": "データセット",
+  "collection": "データ収集",
+  "processing": "処理",
+  "annotation": "注釈",
+  "visualization": "視覚化",
+  "users": "ユーザーズ",
+  "create_dataset": "データセットを作成する"
+}
