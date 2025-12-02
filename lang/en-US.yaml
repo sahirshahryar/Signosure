@@ -1,0 +1,41 @@
+permissions:
+  label:
+    ADMIN: Administrator
+    LOGIN: Log in
+    SCOPED_ADMIN: Administrator in scope
+    SCOPED_READ: Read in scope
+    SCOPED_WRITE: Write to scope
+    SCOPED_CONTRIBUTE: Contribute data in scope
+    SCOPED_ANNOTATE: Annotate data in scope
+  desc:
+    ADMIN: User has all permissions in all scopes
+    LOGIN: User has permission to log in
+    SCOPED_ADMIN: User can administer this scope
+    SCOPED_READ: User can read all data in this scope
+    SCOPED_WRITE: User can modify all data in this scope
+    SCOPED_CONTRIBUTE: User can write their own data to this scope
+    SCOPED_ANNOTATE: User can annotate data in this scope
+
+
+
+ui:
+  datasets: Datasets
+  collection: Collection
+  processing: Processing
+  annotation": Annotation
+  visualization: Visualization
+  users: Users
+  create_dataset: Create new dataset
+
+users:
+  reg:
+    email:
+      in-use: This email address is already in use. Please choose another.
+      invalid-format: The provided email address is not valid.
+    password:
+      too-short: Your password must be at least {$1} character{s:$1} long.
+      same-as-email: Your password cannot be the same as your email address.
+    code:
+      missing: Registration code is required.
+      invalid: Invalid or inactive registration code.
+    success: User successfully registered.

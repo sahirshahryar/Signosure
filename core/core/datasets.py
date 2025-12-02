@@ -1,6 +1,5 @@
-# databases.py
-# Contains all of the logic to actually perform model training (once the
-# input data has been preprocessed).
+# datasets.py
+# Contains APIs to create, update, and delete datasets.
 #
 # This file is part of Signosure.
 #
@@ -24,4 +23,23 @@
 # LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-import sqlalchemy
+
+from email_validator import EmailNotValidError, validate_email
+from fastapi import APIRouter, HTTPException
+from sqlmodel import Session, exists, select
+from sqlmodel.sql.expression import SelectOfScalar
+
+from core.config import get_config_value
+from core.core import get_db
+from core.tables import Dataset, Permission, PermissionScope, User
+
+router = APIRouter()
+
+
+@router.post(path="/create")
+def create_dataset():
+    """
+    Generates a token that can be used to verify a user's email address, either
+    during account creation or when resetting a password.
+    """
+    raise NotImplementedError

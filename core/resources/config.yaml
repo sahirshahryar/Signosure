@@ -1,0 +1,87 @@
+database:
+  # Database type: sqlite, mysql, or postgresql
+  type: "sqlite"
+
+  # SQLite-specific settings (used when type is "sqlite")
+  sqlite:
+    path: ".data/database.db"
+
+  # MySQL-specific settings (used when type is "mysql")
+  mysql:
+    host: "localhost"
+    port: 3306
+    username: "signosure"
+    password: ""
+    database: "signosure"
+
+  # PostgreSQL-specific settings (used when type is "postgresql")
+  postgresql:
+    host: "localhost"
+    port: 5432
+    username: "signosure"
+    password: ""
+    database: "signosure"
+
+redis: TODO
+
+language:
+  # The default language to use. See the `lang` folder (root level) for a list
+  # of options
+  default: en-US
+  selectable:
+  - en-US
+
+auth:
+  # Secret key for signing JWT tokens. CHANGE THIS IN PRODUCTION!
+  # Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
+  secret-key: "your-secret-key-change-this-in-production"
+
+  # Algorithm used for JWT signing
+  algorithm: "HS256"
+
+  # Access token expiration time in seconds (default: 1800 = 30 minutes)
+  # Access tokens are short-lived for security - if stolen, they expire quickly
+  access-token-expire-seconds: 1800
+
+  # Refresh token expiration time in seconds (default: 604800 = 7 days)
+  # Refresh tokens allow users to get new access tokens without re-logging in
+  refresh-token-expire-seconds: 604800
+
+users:
+  # The minimum number of characters a user must put into their passwords.
+  min-password-len: 12
+
+  # Whether users should be able to register without being attached to any
+  # dataset. If false, users must put in a registration code for the dataset
+  # they want to contribute to or annotate.
+  allow-open-registration: false
+
+  # The amount of time, in seconds, that a user has to confirm their email
+  # in order to validate their account before they must generate a new request.
+  email-confirmation-time: 86400
+
+  # The amount of time, in seconds, that a user has to confirm their email
+  # in order to reset their password before they must generate a new request.
+  reset-confirmation-time: 3600
+
+permissions:
+  # Default permissions to give to a user created by an admin
+  created-by-admin:
+    unscoped:
+    - LOGIN
+
+  # Default permissions to give to a user who registers to collect data. The
+  # defaults can be overriden in each permission scope.
+  collector:
+    unscoped:
+    - LOGIN
+    scoped:
+    - SCOPED_CONTRIBUTE
+
+  # Default permissions to give to a user who registers to annotate data. The
+  # defaults can be overridden in each permission scope.
+  annotator:
+    unscoped:
+    - LOGIN
+    scoped:
+    - SCOPED_CONTRIBUTE

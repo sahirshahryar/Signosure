@@ -9,7 +9,7 @@ It provides a unified, end-to-end system for the main tasks of collecting
 new sign-language datasets:
 
 * Collecting labeled data
-* Processing videos
+* Processing videos (trimming, re-encoding, extracting features)
 * Annotating and reviewing videos
 * Visualizing data for faster review and debugging
 
