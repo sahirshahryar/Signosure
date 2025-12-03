@@ -1,6 +1,8 @@
+"""
+Utility functions for session-based authentication and authorization.
+"""
+
 # auth.py
-# Handles session-based authentication and authorization.
-#
 # This file is part of Signosure.
 #
 # Copyright (c) 2025 Georgia Institute of Technology
@@ -23,7 +25,7 @@
 # LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-from typing import Optional
+from typing import Callable, Optional
 
 from fastapi import Cookie, Depends, HTTPException, Response, status
 from sqlmodel import Session
@@ -97,21 +99,11 @@ def delete_all_user_sessions(user_id: int) -> int:
     raise NotImplementedError
 
 
-# FastAPI Dependency Functions
-# =============================
-
-
 async def get_current_user(
     session_id: Optional[str] = Cookie(None, alias="session_id"),
-) -> User:
+) -> Optional[User]:
     """
     Validates a session cookie and returns the User object.
-
-    This is a FastAPI dependency that you use like:
-    @router.get("/protected")
-    async def my_route(current_user: User = Depends(get_current_user)):
-        # current_user is automatically filled in!
-        return {"email": current_user.email}
 
     TODO: Implement this function to:
     1. Check if session_id cookie exists
@@ -123,31 +115,59 @@ async def get_current_user(
     raise NotImplementedError
 
 
+async def require_current_user(
+    user: Optional[User] = Depends(get_current_user),
+):
+    """
+    Requires the user to be logged in, automatically failing if not authorized.
+    """
+    if user is not None:
+        return user
+
+    raise HTTPException(401)
+
+
 async def get_current_active_user(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_current_user),
 ) -> User:
     """
-    Ensures the user has validated their email.
-
-    This chains on top of get_current_user.
-
-    TODO: Implement this function to:
-    1. Check if current_user.validated is True
-    2. If not, raise HTTPException 403 (forbidden)
-    3. Otherwise return current_user
+    Ensures the user making the request is logged in with an account that has
+    a validated email.
     """
-    raise NotImplementedError
+    if current_user.validated:
+        return current_user
+
+    raise HTTPException(403)
 
 
 async def get_admin_user(
     current_user: User = Depends(get_current_active_user),
 ) -> User:
     """
-    Ensures the user is an admin.
-
-    TODO: Implement this function to:
-    1. Check if current_user.admin is True
-    2. If not, raise HTTPException 403 (forbidden)
-    3. Otherwise return current_user
+    Ensures the user making the request is logged in as an administrator.
     """
-    raise NotImplementedError
+    if current_user.admin:
+        return current_user
+
+    raise HTTPException(403)
+
+
+async def get_user_with_permission(unscoped: int = 0) -> Callable:
+    """
+    Verifies that the user has the given permissions (provided as a mask).
+    Used with `Depends()`. For example:
+
+    ```py
+    async def modify_user(
+        user: User = Depends(get_user_with_permission(MODIFY_USER))
+    ):
+        pass
+    ```
+    """
+
+    def helper(user: User = Depends(get_current_user)):
+        if not user.has_permissions(unscoped):
+            raise HTTPException(403)
+        return user
+
+    return helper

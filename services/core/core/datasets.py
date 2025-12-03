@@ -1,6 +1,8 @@
+"""
+APIs for creating, updating, and deleting datasets.
+"""
+
 # datasets.py
-# Contains APIs to create, update, and delete datasets.
-#
 # This file is part of Signosure.
 #
 # Copyright (c) 2025 Georgia Institute of Technology

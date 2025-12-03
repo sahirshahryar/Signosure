@@ -1,6 +1,8 @@
+"""
+APIs for creating, updating, and deleting users.
+"""
+
 # users.py
-# Contains API routes to update and delete users.
-#
 # This file is part of Signosure.
 #
 # Copyright (c) 2025 Georgia Institute of Technology
@@ -33,9 +35,11 @@ from typing import Optional
 
 from email_validator import EmailNotValidError, validate_email
 from fastapi import APIRouter, HTTPException
+from fastapi.params import Depends
 from sqlmodel import Session, exists, select
 from sqlmodel.sql.expression import SelectOfScalar
 
+from core.auth import get_admin_user
 from core.config import get_config_value
 from core.core import get_db
 from core.tables import Dataset, Permission, PermissionScope, User
@@ -264,7 +268,7 @@ async def create_user(
 
 
 @router.post(path="/create-admin")
-async def admin_create_user():
+async def admin_create_user(creator=Depends(get_admin_user)):
     """
     Creates a new account from the admin panel, overriding validation
     concerns.

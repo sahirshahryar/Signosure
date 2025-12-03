@@ -1,6 +1,8 @@
+"""
+Helper functions for the core service.
+"""
+
 # util.py
-# Helper functions for the core service.
-#
 # This file is part of Signosure.
 #
 # Copyright (c) 2025 Georgia Institute of Technology

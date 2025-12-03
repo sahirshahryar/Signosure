@@ -1,6 +1,9 @@
+"""
+An list of the permissions assignable to a user, plus helper functions for
+permissions.
+"""
+
 # permissions.py
-# An enumeration of the permissions assignable to a user.
-#
 # This file is part of Signosure.
 #
 # Copyright (c) 2025 Georgia Institute of Technology

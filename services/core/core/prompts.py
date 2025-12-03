@@ -1,6 +1,8 @@
+"""
+Contains APIs to create, update, and delete prompts.
+"""
+
 # prompts.py
-# Contains APIs to create, update, and delete prompts.
-#
 # This file is part of Signosure.
 #
 # Copyright (c) 2025 Georgia Institute of Technology

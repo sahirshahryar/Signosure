@@ -1,6 +1,8 @@
+"""
+Utility functions for sending emails to users.
+"""
+
 # email.py
-# Utilities for sending emails to users.
-#
 # This file is part of Signosure.
 #
 # Copyright (c) 2025 Georgia Institute of Technology

@@ -1,6 +1,8 @@
+"""
+Handles loading configuration values for the core service.
+"""
+
 # config.py
-# Handles loading configuration values for the core service.
-#
 # This file is part of Signosure.
 #
 # Copyright (c) 2025 Georgia Institute of Technology

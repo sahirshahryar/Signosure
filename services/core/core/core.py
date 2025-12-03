@@ -1,6 +1,8 @@
+"""
+The main file for the `signosure-core` service.
+"""
+
 # core.py
-# The main file for the signosure-core service.
-#
 # This file is part of Signosure.
 #
 # Copyright (c) 2025 Georgia Institute of Technology
