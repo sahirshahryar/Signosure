@@ -31,9 +31,6 @@ from sqlalchemy import BigInteger, Column
 from sqlmodel import Field, Relationship, SQLModel, create_engine
 
 
-# Represents a Signosure user, which can be either a researcher setting up
-# data collection, a Deaf volunteer providing data, or an annotator reviewing
-# the collected data.
 class User(SQLModel, table=True):
     """
     Represents a user account. All user accounts --- researchers, data
@@ -64,8 +61,6 @@ class User(SQLModel, table=True):
     validated: bool
     """ Whether or not the user's email address has been confirmed. """
 
-    # Future value to use if using OAuth-based authentication. For now, we will
-    # not be implementing OAuth.
     oauth: bool
     """
     Future value to use if using OAuth-based authentication. For now, we will
@@ -252,6 +247,36 @@ class Dataset(SQLModel, table=True):
     can be manually overridden for each prompt via the `PromptAffinity` object.
     """
 
+    prompts_required: int
+    """
+    The number of distinct prompts that a user must collect data for. Assuming
+    this dataset has `n` distinct prompts (linked via `PromptAffinity`),
+    - set `prompts_required >= n` or `prompts_required = 0` to require the
+      user to collect data for all prompts.
+    - set `0 < prompts_required < n` to randomly select `prompts_required`
+      prompts that the user should complete. If `sequential_unique_prompts` is
+      `True`, prompts will be assigned in order of ID to each new data
+      collector.
+
+    The user's progress with each prompt is tracked in the `CollectorActivity`
+    table.
+    """
+
+    sequential_unique_prompts: bool
+    """
+    If `True`, each user will be assigned `prompts_required` prompts in
+    sequential order, ordered by the prompts' IDs. Each prompt assignment is
+    unique and cannot be repeated across users in this case. If there aren't
+    enough prompts to assign `prompts_required` prompts to a new collector,
+    they will be assigned all remaining prompts (or zero prompts if none are
+    available). Users with zero prompts will not be able to proceed until more
+    prompts are added.
+
+    If `prompts_required` is changed mid-collection, or new prompts are added,
+    they will be assigned to users who have insufficient prompts assigned,
+    sorted by increasing user ID.
+    """
+
     collector_code: str
     """
     An 8-letter alphanumeric code that users can input to automatically
@@ -367,20 +392,91 @@ class DeviceModelRestriction(SQLModel, table=True):
 
 
 class Prompt(SQLModel, table=True):
+    """
+    Represents a prompt that can be presented to a user to collect. Note that
+    prompts can be reused across datasets, and their relationship to a dataset
+    is denoted by the `PromptAffinity` class.
+    """
+
     id: int = Field(primary_key=True)
-    key: str
-    full_text: str
-    reference_path: str
+    """ Primary key for the `prompt` table. """
+
+    internal_name: str
+    """
+    The normalized name for this prompt. This should avoid special characters
+    like spaces or parentheses, as it will be used in filenames. Note that two
+    prompts with the same internal_name can be assigned to the same dataset ---
+    all filenames include the `id` field for disambiguation.
+    """
+
+    display_text: str
+    """
+    The display text for this prompt. This can be any string and is what is
+    presented to the user.
+    """
+
     deleted: bool
+    """
+    Whether or not this prompt has been inactivated. To preserve data, prompts
+    cannot be fully deleted, only deactivated.
+    """
+
+    def get_reference_filename(self) -> str:
+        """
+        Returns the file path for the reference video or photo shown to the user
+        when displaying this prompt.
+
+        TODO: Implement support for other file types and arbitrary storage
+        locations.
+        """
+        filename = f"{self.id}.mp4"
+        raise NotImplementedError
 
 
 class PromptAffinity(SQLModel, table=True):
+    """
+    Represents the assignment of a prompt to a particular dataset.
+    """
+
     dataset_id: int = Field(foreign_key="dataset.id", primary_key=True)
+    """
+    The ID of the dataset `prompt` is being assigned to. The first half of the
+    primary key for `promptaffinity`.
+    """
+
     prompt_id: int = Field(foreign_key="prompt.id", primary_key=True)
+    """
+    The ID of the prompt being assigned to `dataset`. The second half of the
+    primary key for `promptaffinity`.
+    """
+
     repetitions: int
+    """
+    The number of repetitions to assign to users for this prompt. If not
+    specified, this will default to `default_repetitions` from the dataset.
+    """
 
     dataset: Dataset = Relationship()
+    """
+    The dataset this prompt is assigned to.
+    """
+
     prompt: Prompt = Relationship()
+    """
+    The prompt being assigned to a dataset.
+    """
+
+
+class CollectorAffinity(SQLModel, table=True):
+    """
+    An object indicating that a given user is a data collector for
+    """
+
+    user_id: int = Field(foreign_key="user.id", primary_key=True)
+    dataset_id: int = Field(foreign_key="dataset.id", primary_key=True)
+
+    user: User = Relationship()
+    dataset: Dataset = Relationship()
 
 
 class CollectorActivity(SQLModel, table=True):
