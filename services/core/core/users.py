@@ -34,15 +34,13 @@ import time
 from typing import Optional
 
 from email_validator import EmailNotValidError, validate_email
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Cookie, HTTPException, Response
 from fastapi.params import Depends
-from sqlmodel import Session, exists, select
-from sqlmodel.sql.expression import SelectOfScalar
 
-from core.auth import get_admin_user
+from core.auth import create_session, delete_session, get_admin_user
+from core.collections import Dataset, User
 from core.config import get_config_value
-from core.core import get_db
-from core.tables import Dataset, Permission, PermissionScope, User
+from core.permissions import LOGIN
 
 router = APIRouter()
 
@@ -70,34 +68,49 @@ def hash_password(plaintext: str, salt: bytes, iterations: int) -> bytes:
     return hashlib.pbkdf2_hmac("sha256", plaintext.encode(), salt, iterations)
 
 
-def query_registration_code(code: str) -> SelectOfScalar[Dataset]:
-    code = code.strip().upper()
-    if not re.fullmatch("([A-Z0-9]{6})|([A-Z0-9]{8})", code):
-        raise ValueError(f"Improperly formatted registration code {code}")
+def verify_password(plaintext: str, stored_hash: str) -> bool:
+    """
+    Verifies a password against a stored hash.
 
-    # 6-digit registration code: annotation
-    if len(code) == 6:
-        return select(Dataset).where(
-            Dataset.annotator_registration_open,
-            Dataset.annotator_code == code,
-        )
-    else:
-        return select(Dataset).where(
-            Dataset.collector_registration_open, Dataset.collector_code == code
-        )
+    The stored hash format is: pbkdf2:sha256:{iterations}:{salt_b64}:{hash_b64}
+    """
+    try:
+        parts = stored_hash.split(":")
+        if len(parts) != 5 or parts[0] != "pbkdf2" or parts[1] != "sha256":
+            return False
+
+        iterations = int(parts[2])
+        salt = base64.b64decode(parts[3])
+        expected_hash = base64.b64decode(parts[4])
+
+        computed_hash = hash_password(plaintext, salt, iterations)
+        return secrets.compare_digest(computed_hash, expected_hash)
+    except (ValueError, IndexError):
+        return False
 
 
 async def validate_registration_code(code: str) -> bool:
     """
     Validates a registration code for either annotation or collection.
     """
-    try:
-        with Session(get_db()) as session:
-            return session.exec(
-                select(exists(query_registration_code(code)))
-            ).one()
-    except ValueError:
+    code = code.strip().upper()
+    if not re.fullmatch(r"([A-Z0-9]{6})|([A-Z0-9]{8})", code):
         return False
+
+    # 6-digit registration code: annotation
+    if len(code) == 6:
+        dataset = await Dataset.find_one(
+            Dataset.annotator_reg_open == True,  # noqa: E712
+            Dataset.annotator_code == code,
+        )
+    else:
+        # 8-digit registration code: collection
+        dataset = await Dataset.find_one(
+            Dataset.collector_reg_open == True,  # noqa: E712
+            Dataset.collector_code == code,
+        )
+
+    return dataset is not None
 
 
 @router.post(path="/validate")
@@ -120,44 +133,44 @@ async def validate_user(
     """
     errors = list()
 
-    with Session(get_db()) as session:
-        try:
-            # Check 1a: Email validity
-            parsed_email = validate_email(email)
-            norm_email = parsed_email.email
+    try:
+        # Check 1a: Email validity
+        parsed_email = validate_email(email)
+        norm_email = parsed_email.email
 
-            # Check 1b: Email uniqueness (case-insensitive)
-            existing_user = session.exec(
-                select(User).where(User.email.ilike(norm_email))  # type: ignore
-            ).first()
-            if existing_user:
-                errors.append("users.reg.email.in-use")
-        except EmailNotValidError:
-            errors.append("users.reg.email.invalid-format")
-
-        # Check 2a: Password length
-        min_password_len = int(get_config_value("users.min-password-len", int))
-
-        if min_password_len < 8:
-            min_password_len = 8
-
-        if len(password) < min_password_len:
-            errors.append(f"users.reg.password.too-short|{min_password_len}")
-
-        # Check 2b: Password not same as email (case-insensitive)
-        if password.lower() == email.lower():
-            errors.append("users.reg.password.same-as-email")
-
-        # Check 3: Registration code validation
-        allow_open_registration = get_config_value(
-            "users.allow-open-registration", bool
+        # Check 1b: Email uniqueness (case-insensitive)
+        # MongoDB regex for case-insensitive exact match
+        existing_user = await User.find_one(
+            {"email": {"$regex": f"^{re.escape(norm_email)}$", "$options": "i"}}
         )
+        if existing_user:
+            errors.append("users.reg.email.in-use")
+    except EmailNotValidError:
+        errors.append("users.reg.email.invalid-format")
 
-        if not allow_open_registration:
-            if not registration_code:
-                errors.append("users.reg.code.missing")
-            elif not await validate_registration_code(registration_code):
-                errors.append("users.reg.code.invalid")
+    # Check 2a: Password length
+    min_password_len = int(get_config_value("users.min-password-len", int))
+
+    if min_password_len < 8:
+        min_password_len = 8
+
+    if len(password) < min_password_len:
+        errors.append(f"users.reg.password.too-short|{min_password_len}")
+
+    # Check 2b: Password not same as email (case-insensitive)
+    if password.lower() == email.lower():
+        errors.append("users.reg.password.same-as-email")
+
+    # Check 3: Registration code validation
+    allow_open_registration = get_config_value(
+        "users.allow-open-registration", bool
+    )
+
+    if not allow_open_registration:
+        if not registration_code:
+            errors.append("users.reg.code.missing")
+        elif not await validate_registration_code(registration_code):
+            errors.append("users.reg.code.invalid")
 
     if errors:
         raise HTTPException(
@@ -205,66 +218,149 @@ async def create_user(
     # Generate email confirmation token and expiration
     confirm_token = generate_verification_token()
     confirmation_time = get_config_value("users.email-confirmation-time", int)
-    confirm_exp = int(time.time()) + confirmation_time
+    confirm_exp = int(time.time() * 1000) + confirmation_time
 
     permission_mask = get_config_value("users.default-permission-mask", int)
 
-    # Initialize and store the user
-    with Session(get_db()) as session:
-        new_user = User(  # type: ignore
-            email=norm_email,
-            confirm_token=confirm_token,
-            confirm_exp=confirm_exp,
-            validated=False,
-            oauth=False,
-            pass_hash=pass_hash_str,
-            admin=False,
-            base_permissions=permission_mask,
-        )
+    # Initialize scoped permissions if registration code provided
+    scoped_permissions = {}
+    admin_scopes = set()
 
-        session.add(new_user)
-        session.commit()
-        session.refresh(new_user)
+    if registration_code is not None:
+        is_annotator = len(registration_code) == 6
 
-        if registration_code is not None:
-            is_annotator = len(registration_code) == 6
-
-            dataset = session.exec(
-                query_registration_code(registration_code)
-            ).one()
-
-            # Fetch the default permissions assigned to
-            # collectors or validators for the given dataset
-            scope = session.exec(
-                select(PermissionScope).where(
-                    PermissionScope.id == dataset.scope_id
-                )
-            ).one()
-
-            if is_annotator:
-                permissions = scope.default_annotation
-            else:
-                permissions = scope.default_collection
-
-            new_permissions = Permission(  # type: ignore
-                user_id=new_user.id,
-                scope_id=scope.id,
-                permission_mask=permissions,
+        # Find the dataset with this registration code
+        if is_annotator:
+            dataset = await Dataset.find_one(
+                Dataset.annotator_reg_open == True,  # noqa: E712
+                Dataset.annotator_code == registration_code.strip().upper(),
+            )
+        else:
+            dataset = await Dataset.find_one(
+                Dataset.collector_reg_open == True,  # noqa: E712
+                Dataset.collector_code == registration_code.strip().upper(),
             )
 
-            session.add(new_permissions)
-            session.commit()
+        if dataset:
+            # Fetch the permission scope for this dataset
+            from core.collections import PermissionScope
 
-    # Step 5: Send a confirmation email to the user
-    # TODO: Implement email sending functionality
+            scope = await PermissionScope.get(dataset.scope_id)
+
+            if scope:
+                # Get default permissions for collectors or annotators
+                if is_annotator:
+                    permissions = scope.default_annotation
+                else:
+                    permissions = scope.default_collection
+
+                # Store scoped permissions
+                scoped_permissions[str(scope.id)] = permissions
+
+    # Create and store the user
+    new_user = User(
+        email=norm_email,
+        confirm_token=confirm_token,
+        confirm_exp=confirm_exp,
+        validated=False,
+        oauth=False,
+        pass_hash=pass_hash_str,
+        admin=False,
+        unscoped_permissions=permission_mask,
+        scoped_permissions=scoped_permissions,
+        admin_scopes=admin_scopes,
+        activity_id="",  # Will be set after creating UserActivity
+    )
+
+    await new_user.save()
+
+    # Create UserActivity document for this user
+    from core.collections import UserActivity
+
+    user_activity = UserActivity(
+        collection_activity={},
+        annotation_activity={},
+    )
+    await user_activity.save()
+
+    # Update user with activity_id
+    new_user.activity_id = str(user_activity.id)
+    await new_user.save()
+
+    # TODO: Send a confirmation email to the user
     # This should call a function like: send_confirmation_email(norm_email, confirm_token)
     # The email should contain a link with the confirmation token for the user to verify their account
 
     return {
         "success": True,
-        "user_id": new_user.id,
+        "user_id": str(new_user.id),
         "message": "users.reg.success",
     }
+
+
+@router.post(path="/login")
+async def login_user(email: str, password: str, response: Response):
+    """
+    Authenticates a user and creates a session.
+
+    Returns:
+        On success: { "success": True, "user_id": str }
+        On failure: HTTPException with 401 status
+    """
+    # Find user by email (case-insensitive)
+    user = await User.find_one(
+        {"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}}
+    )
+
+    # Use constant-time comparison to prevent timing attacks
+    if user is None:
+        # Hash a dummy password to prevent timing attacks
+        hash_password(
+            password, b"dummy_salt_value", PASSWORD_HASHING_ITERATIONS
+        )
+        raise HTTPException(status_code=401, detail="users.login.invalid")
+
+    # Verify password
+    if not verify_password(password, user.pass_hash):
+        raise HTTPException(status_code=401, detail="users.login.invalid")
+
+    # Check if user has LOGIN permission
+    if not user.has_permissions(LOGIN):
+        raise HTTPException(status_code=403, detail="users.login.disabled")
+
+    # Create session and set cookie
+    create_session(str(user.id), response)
+
+    return {
+        "success": True,
+        "user_id": str(user.id),
+        "validated": user.validated,
+    }
+
+
+@router.post(path="/logout")
+async def logout_user(
+    response: Response,
+    session_id: Optional[str] = Cookie(None, alias="session_id"),
+):
+    """
+    Logs out the current user by deleting their session.
+
+    Returns:
+        { "success": True } on success
+        { "success": False } if no session existed
+    """
+    if not session_id:
+        return {"success": False, "message": "users.logout.no-session"}
+
+    deleted = delete_session(session_id)
+
+    # Clear the session cookie
+    response.delete_cookie(
+        key="session_id", path="/", httponly=True, secure=True
+    )
+
+    return {"success": deleted}
 
 
 @router.post(path="/create-admin")

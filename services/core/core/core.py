@@ -25,70 +25,84 @@ The main file for the `signosure-core` service.
 # LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+from contextlib import asynccontextmanager
 from urllib.parse import quote_plus
 
+from beanie import init_beanie
 from fastapi import FastAPI
+from motor.motor_asyncio import AsyncIOMotorClient
 from redis import Redis
-from sqlalchemy import Engine
-from tables import create_engine
 
-from core import config, users
+from core import collections, config, users
 
 # Global database engine instance
 engine = None
+
+# Global MongoDB client instance
+mongodb_client = None
+mongodb_initialized = False
 
 # Global Redis client instance
 redis_client = None
 
 
-def get_db() -> Engine:
+async def init_mongodb() -> None:
     """
-    Fetches a connection to the database, creating it if necessary.
-
-    Supports SQLite, MySQL, and PostgreSQL databases based on the
-    configuration in config.yaml.
-
-    Returns:
-        Engine: The SQLAlchemy database engine
+    Initializes the MongoDB connection and Beanie ODM.
 
     Raises:
-        ValueError: If an unsupported database type is specified
+        ConnectionError: If unable to connect to MongoDB
+        ValueError: If MongoDB configuration is invalid
     """
-    global engine
-    if engine is not None:
-        return engine
+    global mongodb_client, mongodb_initialized
 
-    # Get database type from config
-    db_type = config.get_config_value("database.type", str).lower()
+    if mongodb_initialized:
+        return
 
-    if db_type not in ["sqlite", "mysql", "postgresql"]:
-        raise ValueError(
-            f"Unsupported database type {db_type} "
-            f"(must be one of 'sqlite', 'mysql', 'postgresql')"
-        )
+    # Get MongoDB configuration
+    try:
+        host = config.get_config_value("mongodb.host", str)
+        port = config.get_config_value("mongodb.port", int)
+        database = config.get_config_value("mongodb.database", str)
+    except KeyError as e:
+        raise ValueError(f"Missing MongoDB configuration: {e}")
 
-    # Build connection string based on database type
-    if db_type == "sqlite":
-        db_path = config.get_config_value("database.sqlite.path", str)
-        connection_string = f"sqlite:///{db_path}"
-
-    else:
-        host = config.get_config_value(f"database.{db_type}.host", str)
-        port = config.get_config_value(f"database.{db_type}.port", int)
-        username = config.get_config_value(f"database.{db_type}.username", str)
-        password = config.get_config_value(f"database.{db_type}.password", str)
-        database = config.get_config_value(f"database.{db_type}.database", str)
-
-        # URL-encode password to handle special characters
-        encoded_password = quote_plus(password)
-        protocol = "pymysql" if db_type == "mysql" else "psycopg2"
+    # Username and password are optional for local development
+    try:
+        username = config.get_config_value("mongodb.username", str)
+        password = config.get_config_value("mongodb.password", str)
+        # Build authenticated connection string
         connection_string = (
-            f"{db_type}+{protocol}://{username}:{encoded_password}@"
-            f"{host}:{port}/{database}"
+            f"mongodb://{username}:{quote_plus(password)}@{host}:{port}"
+        )
+    except KeyError:
+        # No authentication for local development
+        connection_string = f"mongodb://{host}:{port}"
+
+    # Create MongoDB client
+    try:
+        mongodb_client = AsyncIOMotorClient(connection_string)
+        db = mongodb_client[database]
+
+        # Test connection
+        await mongodb_client.admin.command("ping")
+
+        # Initialize Beanie with all document models
+        await init_beanie(
+            database=db,  # type: ignore
+            document_models=[
+                collections.User,
+                collections.Dataset,
+                collections.Video,
+                collections.Prompt,
+                collections.PermissionScope,
+            ],
         )
 
-    engine = create_engine(connection_string)
-    return engine
+        mongodb_initialized = True
+
+    except Exception as e:
+        raise ConnectionError(f"Failed to connect to MongoDB: {e}")
 
 
 def get_redis() -> Redis:
@@ -139,6 +153,14 @@ def get_redis() -> Redis:
 
 
 app = FastAPI()
+
+
+@asynccontextmanager
+async def startup_event():
+    """Initialize MongoDB connection on application startup."""
+    await init_mongodb()
+    yield
+
 
 app.include_router(users.router, prefix="/core/users", tags=["users"])
 app.include_router(config.router, prefix="/core/config", tags=["config"])

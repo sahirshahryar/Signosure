@@ -1,38 +1,53 @@
-# sv
+# Signosure Web UI
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+The web frontend for Signosure, built with SvelteKit.
 
-## Creating a project
-
-If you're seeing this, you've probably already done this step. Congrats!
+## Development
 
 ```bash
-# create a new project in the current directory
-npx sv create
+# Install dependencies
+npm install
 
-# create a new project in my-app
-npx sv create my-app
-```
-
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```bash
+# Start dev server
 npm run dev
 
-# or start the server and open the app in a new browser tab
+# Start dev server and open in browser
 npm run dev -- --open
 ```
 
 ## Building
 
-To create a production version of your app:
-
 ```bash
 npm run build
+npm run preview  # Preview the production build
 ```
 
-You can preview the production build with `npm run preview`.
+## Configuration
 
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+Set the backend API URL via environment variable:
+
+```bash
+CORE_API_URL=http://localhost:8000
+```
+
+## Authentication
+
+The web UI communicates with the FastAPI core service through SvelteKit server routes, which proxy requests to the backend. This architecture allows pages to be served even when the backend is unavailable.
+
+### To-do
+
+- [ ] `/auth`: User management
+  - [ ] `/verify`: Email verification
+  - [ ] `/forgot`: Password reset request
+  - [ ] `/reset`: Password reset page
+- [ ] `/datasets`: Dataset management
+  - [ ] `/new`: Create new 
+  - [ ] `/edit`: Edit existing
+  - [ ] `/prompts`: Prompt management
+    - [ ] `/new`
+    - [ ] `/edit`
+- [ ] `/collection`: Collection management
+- [ ] `/annotation`: Data annotation
+- [ ] `/visualization`: Data visualizations
+- [ ] `/processing`: Data processing
+- [ ] `/users`: User management
