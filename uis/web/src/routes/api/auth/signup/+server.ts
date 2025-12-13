@@ -6,10 +6,28 @@ interface ValidateResponse {
     valid: boolean;
 }
 
+interface ValidateError {
+    valid: false;
+    errors: string[];
+}
+
 interface CreateUserResponse {
     success: boolean;
     user_id: string;
     message: string;
+}
+
+function formatError(error: unknown): string {
+    if (typeof error === 'string') {
+        return error;
+    }
+    if (error && typeof error === 'object' && 'errors' in error) {
+        const validationError = error as ValidateError;
+        // Return the first error code for now
+        // These can be mapped to user-friendly messages in the UI
+        return validationError.errors[0] ?? 'Validation failed';
+    }
+    return 'An unknown error occurred';
 }
 
 /**
@@ -19,6 +37,7 @@ interface CreateUserResponse {
  * Proxies to the FastAPI core service.
  */
 export const POST: RequestHandler = async ({ request }) => {
+    console.log("POST /api/auth/signup")
     const formData = await request.formData();
 
     const email = formData.get('email')?.toString();
@@ -39,7 +58,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
     if (!validateResult.ok) {
         return json(
-            { error: validateResult.error ?? 'Validation failed' },
+            { error: formatError(validateResult.error) },
             { status: validateResult.status || 400 }
         );
     }
@@ -53,7 +72,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
     if (!createResult.ok) {
         return json(
-            { error: createResult.error ?? 'Failed to create account' },
+            { error: formatError(createResult.error) },
             { status: createResult.status || 500 }
         );
     }

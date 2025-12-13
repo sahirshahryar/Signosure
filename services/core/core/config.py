@@ -32,6 +32,8 @@ from typing import Any, Type, TypeVar, Union, cast
 import yaml
 from fastapi import APIRouter, HTTPException
 
+from core import logger
+
 T = TypeVar("T", int, str, bool, dict, list)
 ConfigValue = Union[int, str, bool, dict, list]
 
@@ -95,17 +97,26 @@ def load_config_file():
     config file will loaded and merged with the base configuration.
     """
     global config_loaded, config
+    logger.info("Configuration is not loaded. Loading now.")
+    logger.debug(f"Configuration file path: '{BASE_CONFIG_PATH}'")
 
     with open(BASE_CONFIG_PATH, "r") as base_f:
         config = yaml.safe_load(base_f)
 
     override_path = os.environ.get(CONFIG_PATH_ENV)
     if override_path and Path(override_path).exists():
+        logger.debug(f"Configuration override exists at '{override_path}'")
         with open(override_path, "r") as f:
             overrides = yaml.safe_load(f)
 
         merge_config(config, overrides)
 
+    log_level = config["logging"]["level"]
+    if log_level:
+        logger.set_logging_level(logger.LogLevel.match(log_level))
+
+    logger.info("Configuration loaded successfully.")
+    logger.trace(f"core.config: System configuration: {config}")
     config_loaded = True
 
 
@@ -130,11 +141,17 @@ def get_key(obj: dict, key: str):
     """
     keys = key.split(".")
     nested = obj
-    for k in keys:
+    for k in keys[:-1]:
         if not isinstance(nested, dict) or k not in nested:
             raise KeyError(f"Configuration key {key} not found")
         nested = config[k]
-    return nested
+
+    if keys[-1] not in nested:
+        raise KeyError(f"Configuration key {key} not found")
+
+    result = nested[keys[-1]]
+    logger.trace(f"core.config: Configuration key '{key}': '{result}'")
+    return result
 
 
 def get_config_value(key: str, expected_type: Type[T]) -> T:

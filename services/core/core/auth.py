@@ -32,9 +32,9 @@ from typing import Callable, Optional
 
 from fastapi import Cookie, Depends, HTTPException, Response, status
 
-from core.collections import User
 from core.config import get_config_value
 from core.core import get_redis
+from core.mongodb import User
 
 # Session configuration
 SESSION_EXPIRATION = 7 * 24 * 60 * 60  # 7 days in seconds

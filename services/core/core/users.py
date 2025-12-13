@@ -34,13 +34,14 @@ import time
 from typing import Optional
 
 from email_validator import EmailNotValidError, validate_email
-from fastapi import APIRouter, Cookie, HTTPException, Response
+from fastapi import APIRouter, Cookie, Form, HTTPException, Response
 from fastapi.params import Depends
 
+from core import logger
 from core.auth import create_session, delete_session, get_admin_user
-from core.collections import Dataset, User
 from core.config import get_config_value
-from core.permissions import LOGIN
+from core.mongodb import Dataset, PermissionScope, User, UserActivity
+from core.permissions import ScopedPermission, UnscopedPermission
 
 router = APIRouter()
 
@@ -60,7 +61,9 @@ def generate_verification_token() -> str:
     return base64.urlsafe_b64encode(random_bytes).decode("utf-8").rstrip("=")
 
 
-def hash_password(plaintext: str, salt: bytes, iterations: int) -> bytes:
+def hash_password(
+    plaintext: str, salt: bytes, iterations: int = PASSWORD_HASHING_ITERATIONS
+) -> bytes:
     """
     Hashes a password using the PBKDF2 algorithm and the specified number of
     iterations
@@ -115,7 +118,11 @@ async def validate_registration_code(code: str) -> bool:
 
 @router.post(path="/validate")
 async def validate_user(
-    email: str, password: str, registration_code: Optional[str] = None
+    email: str = Form(...),
+    password: str = Form(...),
+    registration_code: Optional[str] = Form(None),
+    *,
+    skip_registration_check: bool = False,
 ):
     """
     Validates the contents of the user account creation form with the following
@@ -131,6 +138,7 @@ async def validate_user(
        user provided a registration code, and that there exists a Dataset which
        has that registration code and has registration_open == True.
     """
+    logger.trace("core.users: Entered validate_user()")
     errors = list()
 
     try:
@@ -161,6 +169,9 @@ async def validate_user(
     if password.lower() == email.lower():
         errors.append("users.reg.password.same-as-email")
 
+    if skip_registration_check:
+        return {"valid": True}
+
     # Check 3: Registration code validation
     allow_open_registration = get_config_value(
         "users.allow-open-registration", bool
@@ -173,6 +184,7 @@ async def validate_user(
             errors.append("users.reg.code.invalid")
 
     if errors:
+        logger.trace(f"Rejected user creation: {errors}")
         raise HTTPException(
             status_code=400, detail={"valid": False, "errors": errors}
         )
@@ -182,7 +194,9 @@ async def validate_user(
 
 @router.post(path="/create")
 async def create_user(
-    email: str, password: str, registration_code: Optional[str] = None
+    email: str = Form(...),
+    password: str = Form(...),
+    registration_code: Optional[str] = Form(None),
 ):
     """
     Creates a user with the following steps:
@@ -243,7 +257,7 @@ async def create_user(
 
         if dataset:
             # Fetch the permission scope for this dataset
-            from core.collections import PermissionScope
+            from core.mongodb import PermissionScope
 
             scope = await PermissionScope.get(dataset.scope_id)
 
@@ -275,9 +289,8 @@ async def create_user(
     await new_user.save()
 
     # Create UserActivity document for this user
-    from core.collections import UserActivity
-
     user_activity = UserActivity(
+        user_id=str(new_user.id),
         collection_activity={},
         annotation_activity={},
     )
@@ -299,7 +312,11 @@ async def create_user(
 
 
 @router.post(path="/login")
-async def login_user(email: str, password: str, response: Response):
+async def login_user(
+    response: Response,
+    email: str = Form(...),
+    password: str = Form(...),
+):
     """
     Authenticates a user and creates a session.
 
@@ -325,7 +342,7 @@ async def login_user(email: str, password: str, response: Response):
         raise HTTPException(status_code=401, detail="users.login.invalid")
 
     # Check if user has LOGIN permission
-    if not user.has_permissions(LOGIN):
+    if not user.has_permissions(UnscopedPermission.LOGIN):
         raise HTTPException(status_code=403, detail="users.login.disabled")
 
     # Create session and set cookie
@@ -335,6 +352,43 @@ async def login_user(email: str, password: str, response: Response):
         "success": True,
         "user_id": str(user.id),
         "validated": user.validated,
+    }
+
+
+@router.get(path="/me")
+async def get_current_user_info(
+    session_id: Optional[str] = Cookie(None, alias="session_id"),
+):
+    """
+    Returns information about the currently logged-in user.
+
+    Returns:
+        User info if authenticated, or 401 if not logged in
+    """
+    from core.auth import get_session
+
+    if not session_id:
+        raise HTTPException(status_code=401, detail="users.me.not-logged-in")
+
+    session_data = get_session(session_id)
+    if not session_data:
+        raise HTTPException(status_code=401, detail="users.me.invalid-session")
+
+    user_id = session_data.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="users.me.invalid-session")
+
+    user = await User.get(user_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="users.me.user-not-found")
+
+    return {
+        "id": str(user.id),
+        "email": user.email,
+        "name": user.name,
+        "validated": user.validated,
+        "admin": user.admin,
+        "unscoped": user.unscoped_permissions,
     }
 
 

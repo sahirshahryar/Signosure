@@ -1,7 +1,64 @@
-<script>
+<script lang="ts">
   import { VERSION, CLIENT, CLIENT_SHORT } from "$lib";
   import * as translations from "$lib/paraglide/messages";
-  // let {} = $props();
+  import { goto, invalidateAll } from "$app/navigation";
+
+  interface UserInfo {
+    id: string;
+    email: string;
+    name: string | null;
+    validated: boolean;
+    admin: boolean;
+  }
+
+  let { user }: { user: UserInfo | null } = $props();
+
+  // Display name: use name if set, otherwise extract from email
+  const displayName = $derived(
+    user?.name ?? user?.email?.split('@')[0] ?? null
+  );
+
+  let dropdownOpen = $state(false);
+  let dropdownRef: HTMLDivElement | undefined = $state();
+  let closeTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  function openDropdown() {
+    if (closeTimeout) {
+      clearTimeout(closeTimeout);
+      closeTimeout = null;
+    }
+    dropdownOpen = true;
+  }
+
+  function scheduleClose() {
+    closeTimeout = setTimeout(() => {
+      dropdownOpen = false;
+    }, 150);
+  }
+
+  function toggleDropdown() {
+    dropdownOpen = !dropdownOpen;
+  }
+
+  function closeDropdown(event: MouseEvent) {
+    if (dropdownRef && !dropdownRef.contains(event.target as Node)) {
+      dropdownOpen = false;
+    }
+  }
+
+  async function handleSignOut() {
+    dropdownOpen = false;
+    await fetch('/api/auth/logout', { method: 'POST' });
+    await invalidateAll();
+    goto('/auth/login');
+  }
+
+  $effect(() => {
+    if (dropdownOpen) {
+      document.addEventListener('click', closeDropdown);
+      return () => document.removeEventListener('click', closeDropdown);
+    }
+  });
 </script>
 
 <div class="inline">
@@ -15,34 +72,72 @@
             </div>
             <div class="hidden sm:ml-6 sm:block">
               <div class="flex space-x-4">
-                <!-- Current: "bg-gray-950/50 text-white", Default: "text-gray-300 hover:bg-white/5 hover:text-white" -->
-                <a href="#" aria-current="page" class="rounded-md bg-gray-950/50 px-3 py-2 text-sm font-medium text-white">{translations.datasets()}</a>
-                <a href="#" class="rounded-md px-3 py-2 text-sm font-medium text-gray-300 hover:bg-white/5 hover:text-white">{translations.collection()}</a>
-                <a href="#" class="rounded-md px-3 py-2 text-sm font-medium text-gray-300 hover:bg-white/5 hover:text-white">{translations.processing()}</a>
-                <a href="#" class="rounded-md px-3 py-2 text-sm font-medium text-gray-300 hover:bg-white/5 hover:text-white">{translations.annotation()}</a>
-                <a href="#" class="rounded-md px-3 py-2 text-sm font-medium text-gray-300 hover:bg-white/5 hover:text-white">{translations.visualization()}</a>
-                <a href="#" class="rounded-md px-3 py-2 text-sm font-medium text-gray-300 hover:bg-white/5 hover:text-white">{translations.users()}</a>
+                <!-- Current: "nav-link-active", Default: "nav-link" -->
+                <a href="#" aria-current="page" class="nav-link-active">{translations.datasets()}</a>
+                <a href="#" class="nav-link">{translations.collection()}</a>
+                <a href="#" class="nav-link">{translations.processing()}</a>
+                <a href="#" class="nav-link">{translations.annotation()}</a>
+                <a href="#" class="nav-link">{translations.visualization()}</a>
+                <a href="#" class="nav-link">{translations.users()}</a>
               </div>
             </div>
           </div>
-          <div class="absolute inset-y-0 right-0 flex items-center pr-2 sm:static sm:inset-auto sm:ml-6 sm:pr-0">
-              <div class="rounded-md px-3 py-2 text-sm font-medium text-gray-300 hover:bg-white/5 hover:text-white">
-                <div class="text-gray-100 text-right"><span class="max-lg:hidden">{CLIENT}</span><span class="hidden max-lg:inline">{CLIENT_SHORT}</span></div>
-                <div class="text-gray-400 text-right">Si<span class="max-lg:hidden">gnosure</span> {VERSION}</div>
+          <!-- User controls with dropdown -->
+          <div
+            id="user-controls"
+            class="relative flex items-center pr-2 sm:static sm:inset-auto sm:ml-6 sm:pr-0"
+            role="navigation"
+            aria-label="User menu"
+            bind:this={dropdownRef}
+            onmouseenter={openDropdown}
+            onmouseleave={scheduleClose}
+          >
+            <button
+              type="button"
+              id="navbar-elements"
+              class="rounded-md px-3 py-2 text-sm font-medium text-gray-300 cursor-pointer transition-colors duration-150 ease-in-out {dropdownOpen ? 'bg-white/5 text-white' : 'hover:bg-white/5 hover:text-white'}"
+              onclick={toggleDropdown}
+              aria-expanded={dropdownOpen}
+              aria-haspopup="true"
+            >
+              {#if displayName}
+                <div id="user-name" class="text-gray-100 text-right">{displayName}</div>
+              {/if}
+              <div id="client-name" class="text-gray-400 text-right"><span class="max-lg:hidden">{CLIENT}</span><span class="hidden max-lg:inline">{CLIENT_SHORT}</span></div>
+            </button>
+
+            <!-- Dropdown menu -->
+            <div
+              class="absolute text-right right-0 top-full z-10 mt-1 w-48 origin-top-right rounded-md bg-gray-800 py-1 shadow-lg ring-1 ring-white/10 focus:outline-none transition-all duration-150 ease-in-out"
+              class:opacity-100={dropdownOpen}
+              class:scale-100={dropdownOpen}
+              class:opacity-0={!dropdownOpen}
+              class:scale-95={!dropdownOpen}
+              class:pointer-events-none={!dropdownOpen}
+              role="menu"
+              aria-orientation="vertical"
+              aria-labelledby="navbar-elements"
+            >
+                {#if user}
+                  <div class="px-4 pt-2 pb-3 text-xs text-gray-400 border-b border-white/10">
+                    {user.email}
+                  </div>
+                  <a href="/settings" class="dropdown-item" role="menuitem">Account settings</a>
+                  <button
+                    onclick={handleSignOut}
+                    class="dropdown-item w-full text-right"
+                    role="menuitem"
+                  >
+                    Sign out
+                  </button>
+                {:else}
+                  <a href="/auth/login" class="dropdown-item" role="menuitem">Sign in</a>
+                  <a href="/auth/signup" class="dropdown-item" role="menuitem">Sign up</a>
+                {/if}
+              <div class="px-4 pt-3 pb-2 text-xs text-gray-500 border-t border-white/10">
+                Signosure {VERSION}
               </div>
-
-            <!-- Profile dropdown -->
-            <el-dropdown class="relative ml-3">
-              <button class="relative flex rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500">
-                <span class="absolute -inset-1.5"></span>
-                <span class="sr-only">Open user menu</span>
-                <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80" alt="" class="size-8 rounded-full bg-gray-800 outline -outline-offset-1 outline-white/10" />
-              </button>
-
-              <el-menu anchor="bottom end" popover class="w-48 origin-top-right rounded-md bg-gray-800 py-1 outline -outline-offset-1 outline-white/10 transition transition-discrete [--anchor-gap:--spacing(2)] data-closed:scale-95 data-closed:transform data-closed:opacity-0 data-enter:duration-100 data-enter:ease-out data-leave:duration-75 data-leave:ease-in">
-                <a href="#" class="block px-4 py-2 text-sm text-gray-300 focus:bg-white/5 focus:outline-hidden">Sign out</a>
-              </el-menu>
-            </el-dropdown>
+            </div>
           </div>
         </div>
       </div>

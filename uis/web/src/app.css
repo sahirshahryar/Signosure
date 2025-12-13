@@ -1,3 +1,112 @@
 @import 'tailwindcss/base';
 @import 'tailwindcss/components';
-@import 'tailwindcss/utilities'
+@import 'tailwindcss/utilities';
+
+/*
+ * Custom component classes
+ * Use @apply to compose Tailwind utilities into reusable classes.
+ *
+ * Example:
+ * .btn {
+ *   @apply px-4 py-2 rounded-md font-medium transition-colors duration-150;
+ * }
+ * .btn-primary {
+ *   @apply btn bg-blue-600 text-white hover:bg-blue-500;
+ * }
+ */
+
+@layer components {
+  /* Form inputs */
+  .input {
+    @apply mt-1 block w-full rounded-md border border-gray-300 px-3 py-2
+           text-gray-900 placeholder-gray-400
+           focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500
+           dark:border-gray-600 dark:bg-gray-800 dark:text-white dark:placeholder-gray-500;
+  }
+
+  .input-error {
+    @apply border-red-500 dark:border-red-500;
+  }
+
+  .input-warning {
+    @apply border-yellow-500 dark:border-yellow-500;
+  }
+
+  /* Form labels */
+  .label {
+    @apply block text-sm font-medium text-gray-700 dark:text-gray-300;
+  }
+
+  /* Buttons */
+  .btn {
+    @apply rounded-md px-3 py-2 text-sm font-semibold
+           focus:outline-none focus:ring-2 focus:ring-offset-2
+           disabled:cursor-not-allowed disabled:opacity-50
+           transition-colors duration-150 ease-in-out;
+  }
+
+  .btn-primary {
+    @apply btn bg-blue-600 text-white
+           hover:bg-blue-500 focus:ring-blue-500
+           dark:focus:ring-offset-gray-900;
+  }
+
+  .btn-full {
+    @apply w-full flex justify-center;
+  }
+
+  /* Links */
+  .link {
+    @apply font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400;
+  }
+
+  /* Alert boxes */
+  .alert {
+    @apply rounded-md p-4 text-sm;
+  }
+
+  .alert-error {
+    @apply alert bg-red-50 text-red-700 dark:bg-red-900/50 dark:text-red-200;
+  }
+
+  .alert-success {
+    @apply alert bg-green-50 text-green-700 dark:bg-green-900/50 dark:text-green-200;
+  }
+
+  .alert-warning {
+    @apply alert bg-yellow-50 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-200;
+  }
+
+  /* Navbar */
+  .nav-link {
+    @apply rounded-md px-3 py-2 text-sm font-medium text-gray-300
+           hover:bg-white/5 hover:text-white transition-colors duration-150 ease-in-out;
+  }
+
+  .nav-link-active {
+    @apply rounded-md bg-gray-950/50 px-3 py-2 text-sm font-medium text-white;
+  }
+
+  /* Dropdown menu items */
+  .dropdown-item {
+    @apply block px-4 py-2 text-sm text-gray-300 hover:bg-white/5 transition;
+  }
+
+  /* Page headings */
+  .page-heading {
+    @apply text-center text-3xl font-bold tracking-tight text-gray-900 dark:text-white;
+  }
+
+  /* Helper text */
+  .helper-text {
+    @apply mt-1 text-xs text-gray-500 dark:text-gray-400;
+  }
+
+  .validation-error {
+    @apply mt-1 text-sm text-red-600 dark:text-red-400;
+  }
+
+  .validation-warning {
+    @apply mt-1 text-sm text-yellow-600 dark:text-yellow-400;
+  }
+}

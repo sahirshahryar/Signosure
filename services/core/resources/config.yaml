@@ -1,28 +1,17 @@
-database:
-  # Database type: sqlite, mysql, or postgresql
-  type: "sqlite"
+logging:
+  level: trace
+mongodb:
+  host: localhost
+  port: 27017
+  database: signosure
+  # username: ''  # Not required for development
+  # password: ''  # Not required for development
+redis:
+  host: localhost
+  port: 6379
+  db: 0
+  # password: ''  # Not required for development
 
-  # SQLite-specific settings (used when type is "sqlite")
-  sqlite:
-    path: ".data/database.db"
-
-  # MySQL-specific settings (used when type is "mysql")
-  mysql:
-    host: "localhost"
-    port: 3306
-    username: "signosure"
-    password: ""
-    database: "signosure"
-
-  # PostgreSQL-specific settings (used when type is "postgresql")
-  postgresql:
-    host: "localhost"
-    port: 5432
-    username: "signosure"
-    password: ""
-    database: "signosure"
-
-redis: TODO
 
 language:
   # The default language to use. See the `lang` folder (root level) for a list
@@ -76,7 +65,8 @@ permissions:
     unscoped:
     - LOGIN
     scoped:
-    - SCOPED_CONTRIBUTE
+    - CONTRIBUTE
+    - ASK_QUESTIONS
 
   # Default permissions to give to a user who registers to annotate data. The
   # defaults can be overridden in each permission scope.
@@ -84,4 +74,5 @@ permissions:
     unscoped:
     - LOGIN
     scoped:
-    - SCOPED_CONTRIBUTE
+    - ANNOTATE
+    - ASK_QUESTIONS

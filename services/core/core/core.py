@@ -25,6 +25,7 @@ The main file for the `signosure-core` service.
 # LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+import sys
 from contextlib import asynccontextmanager
 from urllib.parse import quote_plus
 
@@ -33,7 +34,7 @@ from fastapi import FastAPI
 from motor.motor_asyncio import AsyncIOMotorClient
 from redis import Redis
 
-from core import collections, config, users
+from core import config, logger, mongodb
 
 # Global database engine instance
 engine = None
@@ -91,11 +92,13 @@ async def init_mongodb() -> None:
         await init_beanie(
             database=db,  # type: ignore
             document_models=[
-                collections.User,
-                collections.Dataset,
-                collections.Video,
-                collections.Prompt,
-                collections.PermissionScope,
+                mongodb.User,
+                mongodb.UserActivity,
+                mongodb.Dataset,
+                mongodb.DatasetContents,
+                mongodb.Video,
+                mongodb.Prompt,
+                mongodb.PermissionScope,
             ],
         )
 
@@ -152,15 +155,40 @@ def get_redis() -> Redis:
     return redis_client
 
 
-app = FastAPI()
-
-
 @asynccontextmanager
-async def startup_event():
-    """Initialize MongoDB connection on application startup."""
+async def lifespan(app: FastAPI):
+    """Initialize connections and register routers on application startup."""
+    logger.info("signosure-core starting")
     await init_mongodb()
+    try:
+        get_redis()
+    except ConnectionError as e:
+        logger.error(str(e))
+        sys.exit()
+
+    # Import routers here to avoid circular imports
+    from core import users
+
+    admin = await mongodb.User.find_one(mongodb.User.admin == True)  # noqa
+    if admin is None:
+        from core import install
+
+        app.include_router(
+            install.router, prefix="/core/install", tags=["users"]
+        )
+
+        logger.warn("No admin accounts detected. Enabling /install route.")
+        logger.warn(
+            f"Use {logger.Color.RED}uv run installer --challenge "
+            f"{install.INSTALLATION_CHALLENGE}{logger.Color.YELLOW} "
+            f"to set up Signosure."
+        )
+
+    app.include_router(users.router, prefix="/core/users", tags=["users"])
+    app.include_router(config.router, prefix="/core/config", tags=["config"])
+
+    logger.info("signosure-core started")
     yield
 
 
-app.include_router(users.router, prefix="/core/users", tags=["users"])
-app.include_router(config.router, prefix="/core/config", tags=["config"])
+app = FastAPI(lifespan=lifespan)

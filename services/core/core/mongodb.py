@@ -25,12 +25,13 @@ Contains the MongoDB collection definitions for Signosure.
 # LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-from collections import namedtuple
 from datetime import datetime
 from typing import Dict, List, Optional, Set, Tuple
 
 from beanie import Document
-from typing_extensions import NamedTuple
+from pydantic import BaseModel
+
+from core.permissions import ScopedPermission, UnscopedPermission
 
 
 class User(Document):
@@ -103,7 +104,7 @@ class User(Document):
     efficient lookups.
     """
 
-    def has_permissions(self, mask: int) -> bool:
+    def has_permissions(self, mask: UnscopedPermission) -> bool:
         """
         Verifies that the user has all permissions specified in an integer
         permission mask `mask`.
@@ -115,7 +116,9 @@ class User(Document):
             (`bool`) `True` if the user has all permissions represented by
             `mask`, or is an admin; `False` otherwise
         """
-        return self.admin or (self.unscoped_permissions & mask == mask)
+        return (
+            self.admin or UnscopedPermission(self.unscoped_permissions) in mask
+        )
 
     def is_admin_in_scope(self, scope: "PermissionScope") -> bool:
         """
@@ -131,7 +134,7 @@ class User(Document):
         return self.admin or str(scope.id) in self.admin_scopes
 
     def has_permissions_in_scope(
-        self, scope: "PermissionScope", mask: int
+        self, scope: "PermissionScope", mask: ScopedPermission
     ) -> bool:
         """
         Verifies that the user has all permissions specified in an integer
@@ -152,9 +155,25 @@ class User(Document):
 
         if scope_id in self.scoped_permissions:
             scoped_mask = self.scoped_permissions[scope_id]
-            return (scoped_mask & mask) == mask
+            return ScopedPermission(scoped_mask) in mask
 
         return False
+
+    def permissions_in_any_scope(self):
+        """
+        Computes the union of permissions that a user has across all scopes.
+        This is useful for determining which tabs the user in the web UI should
+        be able to see.
+        """
+        if self.admin or len(self.admin_scopes) > 0:
+            return ScopedPermission.ALL
+
+        result = ScopedPermission.NONE
+
+        for mask in self.scoped_permissions.values():
+            result |= ScopedPermission(mask)
+
+        return result
 
 
 class UserActivity(Document):
@@ -162,6 +181,11 @@ class UserActivity(Document):
     The activity for a given user. All collection and annotation activity is
     separated into this document so that the base `User` object can be retrieved
     as efficiently as possible.
+    """
+
+    user_id: str
+    """
+    The ID of the user this activity belongs to.
     """
 
     collection_activity: Dict[str, "CollectorProgress"] = dict()
@@ -399,10 +423,11 @@ class PermissionScope(Document):
 
 
 # Note: the classes below are not MongoDB documents, but are rather object types
-# contained within the above documents.
+# contained within the above documents. They extend Pydantic's BaseModel for
+# automatic schema generation and serialization.
 
 
-class PromptAssignment:
+class PromptAssignment(BaseModel):
     """Represents a prompt being assigned to a user."""
 
     prompt_id: str
@@ -421,49 +446,22 @@ class PromptAssignment:
     whenever a sync completes and is always 0 from the server's perspective.
     """
 
-    def __init__(
-        self, prompt_id: str, repetitions: int, progress: int = 0
-    ) -> None:
-        self.prompt_id = prompt_id
-        self.repetitions = repetitions
-        self.progress = progress
 
-    def __eq__(self, value: object, /) -> bool:
-        if not isinstance(value, "PromptAssignment"):
-            return False
-        return (
-            self.prompt_id == value.prompt_id
-            and self.repetitions == value.repetitions
-            and self.progress == value.progress
-            and self.unsynced_progress == value.unsynced_progress
-        )
-
-
-class CollectorProgress:
+class CollectorProgress(BaseModel):
     """
     Represents the user's progress when collecting data. This object should be
     synced between the server and the user's device.
     """
 
-    prompts: List[PromptAssignment] = list()
+    prompts: List[PromptAssignment] = []
     """
     A list of prompts assigned to the user.
     """
 
     last_sync: datetime
     """
-    The last time information was synced between the device and the server.
+    The last time information was synced between the device and server.
     """
-
-    def __init__(
-        self,
-        prompts: List[PromptAssignment],
-        last_up: datetime,
-        last_down: datetime,
-    ) -> None:
-        self.prompts = prompts
-        self.last_up = last_up
-        self.last_down = last_down
 
     def total_progress(self) -> Tuple[int, int]:
         """
@@ -537,24 +535,34 @@ class CollectorProgress:
 
             # Prompt has some different fields (repetitions and/or progress
             # changed)
-            new_prompt = PromptAssignment(prompt_id, server_prompt.repetitions)
-
-            # User may be using multiple devices to collect
-            if server_prompt.progress > remote_prompt.progress:
-                new_prompt.progress = server_prompt.progress
+            new_progress = (
+                server_prompt.progress
+                if server_prompt.progress > remote_prompt.progress
+                else remote_prompt.progress
+            )
+            new_prompt = PromptAssignment(
+                prompt_id=prompt_id,
+                repetitions=server_prompt.repetitions,
+                progress=new_progress,
+            )
 
             result.append(new_prompt)
 
-        return CollectorProgress(result, datetime.now(), datetime.now())
+        return CollectorProgress(
+            prompts=result,
+            last_sync=datetime.now(),
+        )
 
 
-class AnnotatorProgress:
+class AnnotatorProgress(BaseModel):
     """
     Represents an annotator's progress when annotating data.
     """
 
+    pass
 
-class Clip:
+
+class Clip(BaseModel):
     """
     Represents a clip inside a video. This object includes both
 
@@ -571,27 +579,27 @@ class Clip:
     base_end: float
     """ The original end time of this clip, in seconds. """
 
-    annotator_id: Optional[str]
+    annotator_id: Optional[str] = None
     """ The ID of the user who annotated this video. """
 
-    classification: Optional[str]
+    classification: Optional[str] = None
     """
     The classification given to this clip (good/bad/variant/etc.). Possible
     values for this field are defined for each dataset, in the
     `review_classifications` array.
     """
 
-    comment: Optional[str]
+    comment: Optional[str] = None
     """ A comment left by the annotator with more details. """
 
-    revised_start: Optional[float]
+    revised_start: Optional[float] = None
     """ The annotator's revised start time for the clip. """
 
-    revised_end: Optional[float]
+    revised_end: Optional[float] = None
     """ The annotator's revised start time for the clip. """
 
 
-class DeviceBan:
+class DeviceBan(BaseModel):
     """
     Represents a restriction on collecting data from a certaint type of device.
     """

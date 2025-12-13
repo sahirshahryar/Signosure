@@ -4,7 +4,8 @@
 	import { ParaglideJS } from "@inlang/paraglide-sveltekit";
 	import * as translations from "$lib/paraglide/messages";
 	import '../app.css';
-	let { children } = $props();
+
+	let { children, data } = $props();
 </script>
 
 <style lang="postcss">
@@ -15,7 +16,7 @@
 
 <ParaglideJS {i18n}>
     <div class="flex flex-col items-stretch h-screen w-screen ">
-        <Navbar />
+        <Navbar user={data.user} />
         <div class="flex-1 my-4" id="ui-container">
           {@render children()}
         </div>

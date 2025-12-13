@@ -8,11 +8,11 @@ import { env } from '$env/dynamic/private';
 // Default to localhost:8000 if not configured
 const CORE_API_URL = env.CORE_API_URL ?? 'http://localhost:8000';
 
-export interface ApiResponse<T = unknown> {
+export interface ApiResponse<T = unknown, E = unknown> {
     ok: boolean;
     status: number;
     data?: T;
-    error?: string;
+    error?: E;
     headers?: Headers;
 }
 
@@ -61,7 +61,7 @@ export async function apiRequest<T = unknown>(
 
         // Try to parse JSON response
         let data: T | undefined;
-        let error: string | undefined;
+        let error: unknown;
 
         const contentType = response.headers.get('content-type');
         if (contentType?.includes('application/json')) {
@@ -69,8 +69,9 @@ export async function apiRequest<T = unknown>(
             if (response.ok) {
                 data = json as T;
             } else {
-                // FastAPI returns { detail: string } for errors
-                error = json.detail ?? JSON.stringify(json);
+                // FastAPI returns { detail: ... } for errors
+                // detail can be a string or an object like { valid: false, errors: [...] }
+                error = json.detail ?? json;
             }
         } else if (!response.ok) {
             error = await response.text();

@@ -27,206 +27,199 @@ permissions.
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-from typing import Dict, List, Tuple
+from enum import Flag, auto
+from typing import List, Set, Tuple, Type, TypeVar
 
 from core.config import get_config_value
 
-
-# Generates bitwise masks, so as to make this file easier to work with.
-# For example, LOGIN = 0b1, CREATE_USER = 0b10, UPDATE_USER_INFO = 0b100, ...
-def gen_mask():
-    mask = 1
-    while True:
-        yield mask
-        mask <<= 1
+# Type variable for generic encode/decode functions
+P = TypeVar("P", bound=Flag)
 
 
-# Unscoped permissions are permissions that apply to a user across the entire
-# system.
-UNSCOPED_GEN = gen_mask()
-
-# Scoped permissions are permissions that apply to a user only in a specific
-# context, e.g., within a dataset. We may not want a user to be able to
-# contribute to or annotate ANY dataset across the entire system.
-SCOPED_GEN = gen_mask()
-
-# Lookup tables for unscoped permissions
-UNSCOPED_PERMISSIONS: Dict[str, int] = dict()
-UNSCOPED_PERMISSIONS_LOOKUP: Dict[int, str] = dict()
-
-# Lookup tables for scoped permissions
-SCOPED_PERMISSIONS: Dict[str, int] = dict()
-SCOPED_PERMISSIONS_LOOKUP: Dict[int, str] = dict()
-
-
-# Shorthand to generate a new unscoped permission and map it to a specific
-# position in a bitmask
-def unscoped(name: str) -> int:
-    mask = next(UNSCOPED_GEN)
-    UNSCOPED_PERMISSIONS[name] = mask
-    UNSCOPED_PERMISSIONS_LOOKUP[mask] = name
-    return mask
-
-
-# Shorthand to generate a new scoped permission
-def scoped(name: str) -> int:
-    mask = next(SCOPED_GEN)
-    SCOPED_PERMISSIONS[name] = mask
-    SCOPED_PERMISSIONS_LOOKUP[mask] = name
-    return mask
-
-
-# Permission to log in. Without this permission, any attempt to
-# log in as this user, even with the correct password, will fail.
-LOGIN = unscoped("LOGIN")
-"""
-Allows a user to log in.
-"""
-
-SCOPED_READ = scoped("SCOPED_READ")
-"""
-Allows a user to read all data in a particular scope, including data that is
-not their own. This permission is not required to collect or annotate data.
-"""
-
-SCOPED_WRITE = scoped("SCOPED_WRITE")
-"""
-Allows a user to modify all data in a particular scope. This permission
-implicitly grants `SCOPED_READ` and is not required to collect or annotate
-data.
-"""
-
-# SCOPED_CONTRIBUTE: Permission to contribute data in a specific scope.
-SCOPED_CONTRIBUTE = scoped("SCOPED_CONTRIBUTE")
-"""
-Allows a user to collect data and upload it into datasets in this scope.
-"""
-
-# SCOPED_ANNOTATE: Permission to annotate videos.
-SCOPED_ANNOTATE = scoped("SCOPED_ANNOTATE")
-"""
-Allows a user to annotate data in this scope.
-"""
-
-
-# Do not place any permissions after these statements, or the decode functions
-# below will not work correctly.
-
-UNSCOPED_UPPER_BOUND = next(UNSCOPED_GEN)
-"""
-All unscoped permission masks should have a value less than this.
-"""
-
-SCOPED_UPPER_BOUND = next(SCOPED_GEN)
-"""
-All scoped permission masks should have a value less than this.
-"""
-
-
-def encode(reference: Dict[str, int], permissions: List[str]) -> int:
+def decode_flag_enum(cls: Type[P], flag: P, exclusions: Set[P]) -> List[str]:
     """
-    Converts a list of named permissions to a binary mask, given a mapping of
-    permissions to their binary masks.
-    """
-    composite = 0
-    for permission in permissions:
-        if permission not in reference:
-            raise ValueError(f"Unknown permission '{permission}'")
-
-        composite |= reference[permission]
-
-    return composite
-
-
-def encode_unscoped(permissions: List[str]) -> int:
-    """
-    Converts a list of unscoped permissions to a binary mask. For example,
-    `encode_unscoped(['LOGIN'])` returns `0b1`.
-    """
-    return encode(UNSCOPED_PERMISSIONS, permissions)
-
-
-def encode_scoped(permissions: List[str]) -> int:
-    """
-    Converts a list of scoped permissions to a binary mask. For example,
-    `encode_scoped(['SCOPED_READ', 'SCOPED_ANNOTATE'])` returns `0b1001`.
-    """
-    return encode(SCOPED_PERMISSIONS, permissions)
-
-
-def decode(reference: Dict[int, str], bound: int, composite: int) -> List[str]:
-    """
-    Converts a bitwise permission mask to a list of named permissions, given
-    a map of bit masks to the permissions they represent.
+    Decodes a Flag enum value into a list of member names.
 
     Params:
-        - `reference`: (`Dict[int, str]`) a `dict()` mapping integer masks to
-        named permissions.
-        - `bound`: (`int`) the upper bound for all valid permissions.
-        - `composite`: The permission mask to decode.
+    - `cls`: The Flag enum class.
+    - `flag`: The flag value to decode.
+    - `exclusions`: (`Set`) the values of the enum to exclude from decoding.
+      Useful for special values, like `ALL`, which would be very
+      unhelpful to display.
 
     Returns:
-        (`List[str]`) the list of permissions in `reference` that are enabled
-        in the permission mask.
-
-    Raises:
-        - `ValueError` if `composite > bound` (unrecognized permissions)
+        (`List[str]`) the list of member names that are enabled in `flag`.
     """
-    if composite > bound:
-        error_bits = composite & (bound - 1)
-        raise ValueError(f"Unmapped permissions at bits {error_bits:b}")
+    if flag.value == 0:
+        return ["NONE"]
 
-    mask = 0b1
-    result: List[str] = list()
-    while mask < bound:
-        if mask & composite > 0:
-            result.append(reference[mask])
-        composite = composite & ~mask
-        mask <<= 1
-
-    return result
+    return [
+        member.name
+        for member in cls
+        if member.name is not None
+        and member in flag
+        and member not in exclusions
+    ]
 
 
-def decode_unscoped(composite: int) -> List[str]:
+def encode_flag_enum(cls: Type[P], flags: Set[str], exclusions: Set[P]) -> P:
+    result = 0
+
+    for flag in cls:
+        if flag in exclusions or flag.name is None:
+            continue
+
+        if flag.name in flags:
+            result |= flag.value
+
+    return cls(result)
+
+
+class UnscopedPermission(Flag):
     """
-    Converts a bitwise permission mask into a list of the unscoped permissions
-    that it represents. For example, `decode_unscoped(0b1)` returns
-    `['LOGIN']`.
+    Permissions that apply to a user across the entire system.
     """
-    return decode(UNSCOPED_PERMISSIONS_LOOKUP, UNSCOPED_UPPER_BOUND, composite)
 
-
-def decode_scoped(composite: int) -> List[str]:
+    NONE = 0
+    LOGIN = auto()
     """
-    Converts a bitwise permission mask into a list of the scoped permissions
-    that it represents. For example, `decode_scoped(0b11000)` returns
-    `['SCOPED_CONTRIBUTE', 'SCOPED_ANNOTATE']`.
+    Allows a user to log in. Without this permission, any attempt to log in
+    as this user, even with the correct password, will fail.
     """
-    return decode(SCOPED_PERMISSIONS_LOOKUP, SCOPED_UPPER_BOUND, composite)
+
+    ALL = LOGIN
+
+    @classmethod
+    def decode(cls, flag: "UnscopedPermission") -> List[str]:
+        return decode_flag_enum(
+            cls, flag, {UnscopedPermission.NONE, UnscopedPermission.ALL}
+        )
+
+    @classmethod
+    def encode(cls, flags: Set[str]) -> "UnscopedPermission":
+        return encode_flag_enum(
+            cls, flags, {UnscopedPermission.NONE, UnscopedPermission.ALL}
+        )
 
 
-def get_default_permissions(category: str) -> Tuple[int, int]:
+class ScopedPermission(Flag):
+    """
+    Permissions that apply to a user only within a specific context, e.g.,
+    within a dataset. We may not want a user to be able to contribute to or
+    annotate ANY dataset across the entire system.
+    """
+
+    NONE = 0
+
+    RESEARCHER = auto()
+    """
+    Allows a user to view a dataset, run processing tasks on that dataset, and
+    edit some limited properties of a dataset (such as prompts).
+    """
+
+    DATASET_EDITOR = auto()
+    """
+    Allows a user to modify all data in a particular scope. This permission
+    implicitly grants `READ` and is not required to collect or annotate data.
+    """
+
+    CONTRIBUTE = auto()
+    """
+    Allows a user to collect data and upload it into datasets in this scope.
+    """
+
+    ANNOTATE = auto()
+    """
+    Allows a user to annotate data in this scope.
+    """
+
+    VISUALIZE_DATA = auto()
+    """
+    Allows a user to view data visualizations.
+    """
+
+    ASK_QUESTIONS = auto()
+    """
+    Allows a user to message the researchers.
+    """
+
+    ANSWER_QUESTIONS = auto()
+    """
+    Allows a user to answer researchers.
+    """
+
+    ALL = (
+        RESEARCHER
+        | DATASET_EDITOR
+        | CONTRIBUTE
+        | ANNOTATE
+        | VISUALIZE_DATA
+        | ASK_QUESTIONS
+        | ANSWER_QUESTIONS
+    )
+
+    WEB_VISIBILITY = (
+        RESEARCHER
+        | DATASET_EDITOR
+        | ANNOTATE
+        | VISUALIZE_DATA
+        | ASK_QUESTIONS
+        | ANSWER_QUESTIONS
+    )
+
+    @classmethod
+    def decode(cls, flag: "ScopedPermission"):
+        return decode_flag_enum(
+            cls,
+            flag,
+            {
+                ScopedPermission.NONE,
+                ScopedPermission.ALL,
+                ScopedPermission.WEB_VISIBILITY,
+            },
+        )
+
+    @classmethod
+    def encode(cls, flags: Set[str]):
+        return encode_flag_enum(
+            cls,
+            flags,
+            {
+                ScopedPermission.NONE,
+                ScopedPermission.ALL,
+                ScopedPermission.WEB_VISIBILITY,
+            },
+        )
+
+
+def get_default_permissions(
+    category: str,
+) -> Tuple[UnscopedPermission, ScopedPermission]:
     """
     Loads the default permissions for a given category. See
     `core/resources/config.yaml -> permissions` for a list of
     possible values.
+
+    Params:
+        - `category`: The permission category to load (e.g., 'default')
+
+    Returns:
+        (`Tuple[int, int]`) a tuple of (unscoped_mask, scoped_mask)
     """
     try:
         unscoped_list = get_config_value(
             f"permissions.{category}.unscoped", List[str]
         )
-        unscoped = encode_unscoped(unscoped_list)
+        unscoped = UnscopedPermission.encode(set(unscoped_list))
     except KeyError:
-        # Note: encode_unscoped can raise ValueError for unknown
-        # permissions; these will be passed through
-        unscoped = 0
+        unscoped = UnscopedPermission.NONE
 
     try:
         scoped_list = get_config_value(
             f"permissions.{category}.scoped", List[str]
         )
-        scoped = encode_scoped(scoped_list)
+        scoped = ScopedPermission.encode(set(scoped_list))
     except KeyError:
-        scoped = 0
+        scoped = ScopedPermission.NONE
 
     return (unscoped, scoped)
