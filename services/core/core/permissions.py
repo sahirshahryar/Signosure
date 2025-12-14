@@ -36,7 +36,7 @@ from core.config import get_config_value
 P = TypeVar("P", bound=Flag)
 
 
-def decode_flag_enum(cls: Type[P], flag: P, exclusions: Set[P]) -> List[str]:
+def decode_flag_enum(cls: Type[P], flag: P) -> List[str]:
     """
     Decodes a Flag enum value into a list of member names.
 
@@ -57,16 +57,18 @@ def decode_flag_enum(cls: Type[P], flag: P, exclusions: Set[P]) -> List[str]:
         member.name
         for member in cls
         if member.name is not None
+        # Only include enum members with 1 set bit:
+        and member.value & (member.value - 1) == 0
         and member in flag
-        and member not in exclusions
     ]
 
 
-def encode_flag_enum(cls: Type[P], flags: Set[str], exclusions: Set[P]) -> P:
+def encode_flag_enum(cls: Type[P], flags: Set[str]) -> P:
     result = 0
 
     for flag in cls:
-        if flag in exclusions or flag.name is None:
+        # Only consider enum members with 1 set bit
+        if flag.value & (flag.value - 1) != 0 or flag.name is None:
             continue
 
         if flag.name in flags:
@@ -91,15 +93,11 @@ class UnscopedPermission(Flag):
 
     @classmethod
     def decode(cls, flag: "UnscopedPermission") -> List[str]:
-        return decode_flag_enum(
-            cls, flag, {UnscopedPermission.NONE, UnscopedPermission.ALL}
-        )
+        return decode_flag_enum(cls, flag)
 
     @classmethod
     def encode(cls, flags: Set[str]) -> "UnscopedPermission":
-        return encode_flag_enum(
-            cls, flags, {UnscopedPermission.NONE, UnscopedPermission.ALL}
-        )
+        return encode_flag_enum(cls, flags)
 
 
 class ScopedPermission(Flag):
@@ -167,29 +165,21 @@ class ScopedPermission(Flag):
         | ANSWER_QUESTIONS
     )
 
+    VIEW_DATASETS = RESEARCHER | DATASET_EDITOR
+    VIEW_COLLECTION = RESEARCHER | DATASET_EDITOR
+    VIEW_PROCESSING = RESEARCHER
+    VIEW_ANNOTATION = RESEARCHER | ANNOTATE
+    VIEW_VISUALIZATION = RESEARCHER | VISUALIZE_DATA
+    VIEW_USERS = RESEARCHER
+    VIEW_QUESTIONS = ASK_QUESTIONS | ANSWER_QUESTIONS
+
     @classmethod
     def decode(cls, flag: "ScopedPermission"):
-        return decode_flag_enum(
-            cls,
-            flag,
-            {
-                ScopedPermission.NONE,
-                ScopedPermission.ALL,
-                ScopedPermission.WEB_VISIBILITY,
-            },
-        )
+        return decode_flag_enum(cls, flag)
 
     @classmethod
     def encode(cls, flags: Set[str]):
-        return encode_flag_enum(
-            cls,
-            flags,
-            {
-                ScopedPermission.NONE,
-                ScopedPermission.ALL,
-                ScopedPermission.WEB_VISIBILITY,
-            },
-        )
+        return encode_flag_enum(cls, flags)
 
 
 def get_default_permissions(
@@ -208,16 +198,14 @@ def get_default_permissions(
     """
     try:
         unscoped_list = get_config_value(
-            f"permissions.{category}.unscoped", List[str]
+            f"permissions.{category}.unscoped", List
         )
         unscoped = UnscopedPermission.encode(set(unscoped_list))
     except KeyError:
         unscoped = UnscopedPermission.NONE
 
     try:
-        scoped_list = get_config_value(
-            f"permissions.{category}.scoped", List[str]
-        )
+        scoped_list = get_config_value(f"permissions.{category}.scoped", List)
         scoped = ScopedPermission.encode(set(scoped_list))
     except KeyError:
         scoped = ScopedPermission.NONE

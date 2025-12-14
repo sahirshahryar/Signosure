@@ -2,6 +2,16 @@
   import { VERSION, CLIENT, CLIENT_SHORT } from "$lib";
   import * as translations from "$lib/paraglide/messages";
   import { goto, invalidateAll } from "$app/navigation";
+  import { page } from "$app/stores";
+
+  type NavTab =
+    | 'datasets'
+    | 'collection'
+    | 'processing'
+    | 'annotation'
+    | 'visualization'
+    | 'users'
+    | 'questions';
 
   interface UserInfo {
     id: string;
@@ -11,7 +21,24 @@
     admin: boolean;
   }
 
-  let { user }: { user: UserInfo | null } = $props();
+  let { user, visibleTabs = [] }: { user: UserInfo | null; visibleTabs: NavTab[] } = $props();
+
+  // Tab configuration: maps tab ID to its route and translation function
+  const tabConfig: Record<NavTab, { href: string; label: () => string }> = {
+    datasets: { href: '/datasets', label: translations.datasets },
+    collection: { href: '/collection', label: translations.collection },
+    processing: { href: '/processing', label: translations.processing },
+    annotation: { href: '/annotation', label: translations.annotation },
+    visualization: { href: '/visualization', label: translations.visualization },
+    users: { href: '/users', label: translations.users },
+    questions: { href: '/questions', label: translations.questions },
+  };
+
+  // Check if a tab is currently active based on the current path
+  function isActiveTab(href: string): boolean {
+    const currentPath = $page.url.pathname;
+    return currentPath === href || currentPath.startsWith(href + '/');
+  }
 
   // Display name: use name if set, otherwise extract from email
   const displayName = $derived(
@@ -72,13 +99,17 @@
             </div>
             <div class="hidden sm:ml-6 sm:block">
               <div class="flex space-x-4">
-                <!-- Current: "nav-link-active", Default: "nav-link" -->
-                <a href="#" aria-current="page" class="nav-link-active">{translations.datasets()}</a>
-                <a href="#" class="nav-link">{translations.collection()}</a>
-                <a href="#" class="nav-link">{translations.processing()}</a>
-                <a href="#" class="nav-link">{translations.annotation()}</a>
-                <a href="#" class="nav-link">{translations.visualization()}</a>
-                <a href="#" class="nav-link">{translations.users()}</a>
+                {#each visibleTabs as tab}
+                  {@const config = tabConfig[tab]}
+                  {@const active = isActiveTab(config.href)}
+                  <a
+                    href={config.href}
+                    class={active ? 'nav-link-active' : 'nav-link'}
+                    aria-current={active ? 'page' : undefined}
+                  >
+                    {config.label()}
+                  </a>
+                {/each}
               </div>
             </div>
           </div>

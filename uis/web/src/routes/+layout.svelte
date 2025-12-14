@@ -16,7 +16,7 @@
 
 <ParaglideJS {i18n}>
     <div class="flex flex-col items-stretch h-screen w-screen ">
-        <Navbar user={data.user} />
+        <Navbar user={data.user} visibleTabs={data.visibleTabs} />
         <div class="flex-1 my-4" id="ui-container">
           {@render children()}
         </div>

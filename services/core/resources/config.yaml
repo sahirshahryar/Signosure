@@ -76,3 +76,10 @@ permissions:
     scoped:
     - ANNOTATE
     - ASK_QUESTIONS
+
+datasets:
+  default-repetitions: 10
+  default-classifications:
+  - Correct
+  - Variant
+  - Invalid

@@ -167,7 +167,7 @@ async def lifespan(app: FastAPI):
         sys.exit()
 
     # Import routers here to avoid circular imports
-    from core import users
+    from core import datasets, users
 
     admin = await mongodb.User.find_one(mongodb.User.admin == True)  # noqa
     if admin is None:
@@ -186,6 +186,9 @@ async def lifespan(app: FastAPI):
 
     app.include_router(users.router, prefix="/core/users", tags=["users"])
     app.include_router(config.router, prefix="/core/config", tags=["config"])
+    app.include_router(
+        datasets.router, prefix="/core/datasets", tags=["datasets"]
+    )
 
     logger.info("signosure-core started")
     yield

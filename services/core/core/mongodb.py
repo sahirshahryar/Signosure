@@ -208,6 +208,12 @@ class Dataset(Document):
     name: str
     """ The name of this dataset. """
 
+    language: str
+    """ The language being collected for. """
+
+    region: Optional[str] = None
+    """ The dialect or regional variation of the language being collected. """
+
     scope_id: str
     """
     The ID of the permission scope used to manage permissions for this dataset.
@@ -304,7 +310,7 @@ class Dataset(Document):
     A list of banned device models for this dataset.
     """
 
-    contents: str
+    contents_id: str
     """
     The string ID of the `DatasetContents` which contains the users, videos,
     and annotations for this dataset.
@@ -415,11 +421,27 @@ class PermissionScope(Document):
     freely.
     """
 
+    name: str
+    """
+    The name of this permission scope. Usually the same as the dataset it is
+    used for, but it can be different if a custom permission scope is used.
+    """
+
     default_collection: int = 0
     """ The default permissions for new data collectors in this scope. """
 
+    default_unscoped_collection: int = 0
+    """
+    Default unscoped permissions to assign to users registering into this scope.
+    """
+
     default_annotation: int = 0
     """ The default permissions for new annotators in this scope. """
+
+    default_unscoped_annotation: int = 0
+    """
+    Default scoped permissions to assign to users registering into this scope.
+    """
 
 
 # Note: the classes below are not MongoDB documents, but are rather object types

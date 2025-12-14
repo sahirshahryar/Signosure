@@ -34,14 +34,17 @@ import time
 from typing import Optional
 
 from email_validator import EmailNotValidError, validate_email
-from fastapi import APIRouter, Cookie, Form, HTTPException, Response
+from fastapi import APIRouter, Cookie, Depends, Form, HTTPException, Response
 from fastapi.params import Depends
 
 from core import logger
 from core.auth import create_session, delete_session, get_admin_user
 from core.config import get_config_value
 from core.mongodb import Dataset, PermissionScope, User, UserActivity
-from core.permissions import ScopedPermission, UnscopedPermission
+from core.permissions import (
+    ScopedPermission,
+    UnscopedPermission,
+)
 
 router = APIRouter()
 
@@ -97,17 +100,17 @@ async def validate_registration_code(code: str) -> bool:
     Validates a registration code for either annotation or collection.
     """
     code = code.strip().upper()
-    if not re.fullmatch(r"([A-Z0-9]{6})|([A-Z0-9]{8})", code):
+    if not re.fullmatch(r"^([AC][A-Z0-9]{6}[A-Z])$", code):
         return False
 
-    # 6-digit registration code: annotation
-    if len(code) == 6:
+    # Registration code starts with A: annotation
+    if code.startswith("A"):
         dataset = await Dataset.find_one(
             Dataset.annotator_reg_open == True,  # noqa: E712
             Dataset.annotator_code == code,
         )
     else:
-        # 8-digit registration code: collection
+        # Registration code starts with C: collection
         dataset = await Dataset.find_one(
             Dataset.collector_reg_open == True,  # noqa: E712
             Dataset.collector_code == code,
@@ -234,14 +237,15 @@ async def create_user(
     confirmation_time = get_config_value("users.email-confirmation-time", int)
     confirm_exp = int(time.time() * 1000) + confirmation_time
 
-    permission_mask = get_config_value("users.default-permission-mask", int)
-
     # Initialize scoped permissions if registration code provided
     scoped_permissions = {}
     admin_scopes = set()
 
+    # TODO: Create default permission mask for open registration
+    permission_mask = 0
+
     if registration_code is not None:
-        is_annotator = len(registration_code) == 6
+        is_annotator = registration_code.startswith("A")
 
         # Find the dataset with this registration code
         if is_annotator:
@@ -256,16 +260,15 @@ async def create_user(
             )
 
         if dataset:
-            # Fetch the permission scope for this dataset
-            from core.mongodb import PermissionScope
-
             scope = await PermissionScope.get(dataset.scope_id)
 
             if scope:
                 # Get default permissions for collectors or annotators
                 if is_annotator:
+                    permission_mask = scope.default_unscoped_annotation
                     permissions = scope.default_annotation
                 else:
+                    permission_mask = scope.default_unscoped_collection
                     permissions = scope.default_collection
 
                 # Store scoped permissions
@@ -388,7 +391,12 @@ async def get_current_user_info(
         "name": user.name,
         "validated": user.validated,
         "admin": user.admin,
-        "unscoped": user.unscoped_permissions,
+        "unscoped_permissions": UnscopedPermission.decode(
+            UnscopedPermission(user.unscoped_permissions)
+        ),
+        "visibility_permissions": ScopedPermission.decode(
+            user.permissions_in_any_scope() & ScopedPermission.WEB_VISIBILITY
+        ),
     }
 
 
@@ -448,3 +456,9 @@ async def delete_user():
     Completely deletes a user account.
     """
     raise NotImplementedError
+
+
+@router.get("/list-permission-scopes")
+async def list_permission_scopes(user: User = Depends(get_admin_user)):
+    scopes = await PermissionScope.find_all().to_list()
+    return [str(scope.id) for scope in scopes]
