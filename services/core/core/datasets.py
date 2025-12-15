@@ -182,13 +182,11 @@ async def validate_dataset_access(
     user: User = Depends(get_current_active_user),
     needs_edit_perms: bool = False,
 ) -> Tuple[Dataset, PermissionScope]:
-    dataset = await Dataset.find_one(Dataset.id == dataset_id)
+    dataset = await Dataset.get(dataset_id)
     if dataset is None:
         raise HTTPException(404)
 
-    scope_data = await PermissionScope.find_one(
-        PermissionScope.id == dataset.scope_id
-    )
+    scope_data = await PermissionScope.get(dataset.scope_id)
 
     # A permission scope must be attached to all Dataset objects
     if scope_data is None:
@@ -244,6 +242,7 @@ async def about_dataset(
         "contents": {
             "id": dataset.contents_id,
             "summary": dataset.summary,
+            "summary_updated": dataset.summary_updated,
             "stale": dataset.should_refresh_summary(),
         },
         "can_edit": user.can_edit_dataset(dataset),
@@ -260,6 +259,7 @@ async def summarize_dataset(
     return {
         "contents": dataset.contents_id,
         "summary": dataset.summary,
+        "summary_updated": dataset.summary_updated,
         "stale": False,
     }
 

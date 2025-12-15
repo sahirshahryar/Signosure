@@ -7,6 +7,7 @@ export interface DatasetSummary {
     name: string;
     language: string;
     region: string | null;
+    can_edit: boolean;
 }
 
 export const load: PageServerLoad = async ({ cookies, parent }) => {

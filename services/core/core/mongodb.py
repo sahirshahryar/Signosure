@@ -359,9 +359,7 @@ class Dataset(Document):
         if time_since < min_time:
             return
 
-        contents = await DatasetContents.find_one(
-            DatasetContents.dataset_id == str(self.id)
-        )
+        contents = await DatasetContents.get(str(self.contents_id))
         if contents is None:
             raise HTTPException(500, "Dataset has no contents attached")
 
@@ -373,7 +371,7 @@ class Dataset(Document):
 
         total_clips, total_annotated = 0, 0
         for video_id in contents.videos:
-            video = await Video.find_one(Video.id == video_id)
+            video = await Video.get(video_id)
             if video is None:
                 raise HTTPException(500, "Invalid video reference")
 
