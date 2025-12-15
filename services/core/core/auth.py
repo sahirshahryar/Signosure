@@ -35,6 +35,7 @@ from fastapi import Cookie, Depends, HTTPException, Response, status
 from core.config import get_config_value
 from core.core import get_redis
 from core.mongodb import User
+from core.permissions import UnscopedPermission
 
 # Session configuration
 SESSION_EXPIRATION = 7 * 24 * 60 * 60  # 7 days in seconds
@@ -274,14 +275,14 @@ async def get_admin_user(
     raise HTTPException(403)
 
 
-async def get_user_with_permission(unscoped: int = 0) -> Callable:
+async def get_user_with_permission(unscoped: UnscopedPermission) -> Callable:
     """
     Verifies that the user has the given permissions (provided as a mask).
     Used with `Depends()`. For example:
 
     ```py
     async def modify_user(
-        user: User = Depends(get_user_with_permission(MODIFY_USER))
+        user: User = Depends(get_user_with_permission())
     ):
         pass
     ```

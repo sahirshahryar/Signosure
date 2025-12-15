@@ -25,12 +25,16 @@ Contains the MongoDB collection definitions for Signosure.
 # LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+import time
 from datetime import datetime
+from enum import Enum
 from typing import Dict, List, Optional, Set, Tuple
 
 from beanie import Document
+from fastapi import HTTPException
 from pydantic import BaseModel
 
+from core import config
 from core.permissions import ScopedPermission, UnscopedPermission
 
 
@@ -175,6 +179,17 @@ class User(Document):
 
         return result
 
+    def can_edit_dataset(self, dataset: "Dataset") -> bool:
+        if self.admin or dataset.scope_id in self.admin_scopes:
+            return True
+
+        if dataset.scope_id in self.scoped_permissions:
+            return ScopedPermission.EDIT_DATASET in ScopedPermission(
+                self.scoped_permissions[dataset.scope_id]
+            )
+
+        return False
+
 
 class UserActivity(Document):
     """
@@ -316,6 +331,68 @@ class Dataset(Document):
     and annotations for this dataset.
     """
 
+    summary: Dict[str, str] = dict()
+    """
+    A map of summary data for the contents of this dataset. This is stored
+    here, and not in DatasetContents, because we don't want to query the full
+    contents of the dataset just to get the summary.
+    """
+
+    summary_updated: int = 0
+    """
+    The last time the summary was updated. If it has been more than
+    `datasets.summary-staleness` milliseconds since this time --- default
+    `600000`, or 10 minutes --- the web UI should automatically prompt the
+    server to refresh the summary.
+    """
+
+    def should_refresh_summary(self):
+        max_time = config.get_config_value("datasets.summary-staleness", int)
+        time_since = int(time.time() * 1000) - self.summary_updated
+
+        return time_since >= max_time
+
+    async def compute_summary(self):
+        min_time = config.get_config_value("datasets.summary-reject", int)
+        time_since = int(time.time() * 1000) - self.summary_updated
+
+        if time_since < min_time:
+            return
+
+        contents = await DatasetContents.find_one(
+            DatasetContents.dataset_id == str(self.id)
+        )
+        if contents is None:
+            raise HTTPException(500, "Dataset has no contents attached")
+
+        new_summary = {
+            "collectors": str(len(contents.collector_ids)),
+            "annotators": str(len(contents.annotator_ids)),
+            "videos_collected": str(len(contents.videos)),
+        }
+
+        total_clips, total_annotated = 0, 0
+        for video_id in contents.videos:
+            video = await Video.find_one(Video.id == video_id)
+            if video is None:
+                raise HTTPException(500, "Invalid video reference")
+
+            for clip in video.clips:
+                if clip.rejected:
+                    continue
+
+                total_clips += 1
+                if clip.annotator_id is not None:
+                    total_annotated += 1
+
+        new_summary["total_clips"] = str(total_clips)
+        new_summary["total_annotated"] = str(total_clips)
+
+        self.summary = new_summary
+        self.summary_updated = int(time.time() * 1000)
+
+        await self.save()
+
 
 class DatasetContents(Document):
     """
@@ -412,6 +489,15 @@ class Prompt(Document):
     but the filepath is stored here anyway since some files can be MP4s and some
     can be JPEGs.
     """
+
+    def reference_type(self) -> "ReferenceType":
+        if self.filepath is not None:
+            if self.filepath.endswith(".jpeg"):
+                return ReferenceType.IMAGE
+            elif self.filepath.endswith(".mp4"):
+                return ReferenceType.VIDEO
+
+        return ReferenceType.NO_REFERENCE
 
 
 class PermissionScope(Document):
@@ -601,6 +687,9 @@ class Clip(BaseModel):
     base_end: float
     """ The original end time of this clip, in seconds. """
 
+    rejected: bool = False
+    """ Whether the person who recorded this video discarded this attempt. """
+
     annotator_id: Optional[str] = None
     """ The ID of the user who annotated this video. """
 
@@ -639,3 +728,9 @@ class DeviceBan(BaseModel):
     receive a message telling them that their device cannot be used for data
     collection.
     """
+
+
+class ReferenceType(Enum):
+    NO_REFERENCE = "NoReference"
+    IMAGE = "Image"
+    VIDEO = "Video"

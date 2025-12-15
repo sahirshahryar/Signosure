@@ -21,13 +21,6 @@ language:
   - en-US
 
 auth:
-  # Secret key for signing JWT tokens. CHANGE THIS IN PRODUCTION!
-  # Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
-  secret-key: "your-secret-key-change-this-in-production"
-
-  # Algorithm used for JWT signing
-  algorithm: "HS256"
-
   # Access token expiration time in seconds (default: 1800 = 30 minutes)
   # Access tokens are short-lived for security - if stolen, they expire quickly
   access-token-expire-seconds: 1800
@@ -83,3 +76,12 @@ datasets:
   - Correct
   - Variant
   - Invalid
+  summary-staleness: 600000
+  # Calculating a summary for an entire dataset's collection progress can be
+  # expensive. To spare unnecessary expense, the system will only automatically
+  # recompute the summary after this number of milliseconds. The default value
+  # is 600000, or 10 minutes. The summary can always be manually refreshed,
+  # unless...
+  summary-reject: 5000
+  # ... it has been fewer than `summary-reject` milliseconds since the last
+  # update.

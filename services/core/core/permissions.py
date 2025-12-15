@@ -115,7 +115,7 @@ class ScopedPermission(Flag):
     edit some limited properties of a dataset (such as prompts).
     """
 
-    DATASET_EDITOR = auto()
+    EDIT_DATASET = auto()
     """
     Allows a user to modify all data in a particular scope. This permission
     implicitly grants `READ` and is not required to collect or annotate data.
@@ -148,7 +148,7 @@ class ScopedPermission(Flag):
 
     ALL = (
         RESEARCHER
-        | DATASET_EDITOR
+        | EDIT_DATASET
         | CONTRIBUTE
         | ANNOTATE
         | VISUALIZE_DATA
@@ -158,17 +158,45 @@ class ScopedPermission(Flag):
 
     WEB_VISIBILITY = (
         RESEARCHER
-        | DATASET_EDITOR
+        | EDIT_DATASET
         | ANNOTATE
         | VISUALIZE_DATA
         | ASK_QUESTIONS
         | ANSWER_QUESTIONS
     )
+    """
+    A mask containing all the permissions that are used to determine whether
+    the various navigation tabs in the Signosure web UI are visible. When
+    passing permission data to SvelteKit, the user's full set of scoped
+    permissions should be ANDed with this value, as the other permissions in a
+    user's permission mask do not need to be visible to SvelteKit.
+    """
 
-    VIEW_DATASETS = RESEARCHER | DATASET_EDITOR
-    VIEW_COLLECTION = RESEARCHER | DATASET_EDITOR
+    VIEW_DATASET = RESEARCHER | EDIT_DATASET
+    """
+    This permission controls whether a user should be able to see a particular
+    dataset in the sidebar of the `Datasets` view.
+    """
+
+    VIEW_COLLECTION = RESEARCHER | EDIT_DATASET
+    """
+    This permission controls whether a user should be able to monitor users'
+    collection progress (and view individual videos) on a specific dataset
+    in the `Collection` view.
+    """
+
     VIEW_PROCESSING = RESEARCHER
+    """
+    This permission controls whether a user can view a dataset in the
+    `Processing` view.
+    """
+
     VIEW_ANNOTATION = RESEARCHER | ANNOTATE
+    """
+    This permission controls whether a user can view a dataset in the
+    `Annotation` view.
+    """
+
     VIEW_VISUALIZATION = RESEARCHER | VISUALIZE_DATA
     VIEW_USERS = RESEARCHER
     VIEW_QUESTIONS = ASK_QUESTIONS | ANSWER_QUESTIONS

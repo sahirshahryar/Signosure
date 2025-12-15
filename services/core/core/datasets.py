@@ -26,14 +26,15 @@ APIs for creating, updating, and deleting datasets.
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 import random
-from typing import List, Optional, cast
+from typing import List, Optional, Tuple, cast
 
+from beanie.odm.operators.find.comparison import In
 from fastapi import APIRouter, Depends, Form, HTTPException
 
 from core import config, logger
 from core.auth import get_admin_user, get_current_active_user
 from core.config import get_config_value
-from core.mongodb import Dataset, DatasetContents, PermissionScope, User
+from core.mongodb import Dataset, DatasetContents, PermissionScope, Prompt, User
 from core.permissions import ScopedPermission, get_default_permissions
 
 router = APIRouter()
@@ -176,6 +177,93 @@ async def create_dataset(
     return {"success": True, "id": str(new_dataset.id)}
 
 
+async def validate_dataset_access(
+    dataset_id: str,
+    user: User = Depends(get_current_active_user),
+    needs_edit_perms: bool = False,
+) -> Tuple[Dataset, PermissionScope]:
+    dataset = await Dataset.find_one(Dataset.id == dataset_id)
+    if dataset is None:
+        raise HTTPException(404)
+
+    scope_data = await PermissionScope.find_one(
+        PermissionScope.id == dataset.scope_id
+    )
+
+    # A permission scope must be attached to all Dataset objects
+    if scope_data is None:
+        raise HTTPException(500, "Dataset is missing a permission scope.")
+
+    perms = ScopedPermission.VIEW_DATASET
+    if needs_edit_perms:
+        perms |= ScopedPermission.EDIT_DATASET
+
+    if not user.has_permissions_in_scope(scope_data, perms):
+        raise HTTPException(403)
+
+    return dataset, scope_data
+
+
+@router.get(path="/about/{dataset_id}")
+async def about_dataset(
+    dataset_id: str, user: User = Depends(get_current_active_user)
+):
+    dataset, scope = await validate_dataset_access(dataset_id, user)
+    prompts = await Prompt.find(In(Prompt.id, list(dataset.prompts))).to_list()
+    prompt_data = [
+        {
+            "id": str(prompt.id),
+            "internal_name": prompt.internal_name,
+            "display_text": prompt.display_text,
+            "reference_type": prompt.reference_type().value,
+        }
+        for prompt in prompts
+    ]
+
+    return {
+        "id": str(dataset.id),
+        "name": dataset.name,
+        "language": dataset.language,
+        "region": dataset.region,
+        "scope": {
+            "id": str(scope.id),
+            "name": scope.name,
+        },
+        "default_repetitions": dataset.default_repetitions,
+        "prompts_assigned": dataset.prompts_assigned,
+        "sequential_unique_prompts": dataset.sequential_unique_prompts,
+        "collector_code": dataset.collector_code,
+        "collector_reg_open": dataset.collector_reg_open,
+        "collector_req_approval": dataset.collector_req_approval,
+        "annotator_code": dataset.annotator_code,
+        "annotator_reg_open": dataset.annotator_reg_open,
+        "annotator_req_approval": dataset.annotator_req_approval,
+        "prompt_data": prompt_data,
+        "review_classifications": dataset.review_classifications,
+        "device_bans": dataset.device_bans,
+        "contents": {
+            "id": dataset.contents_id,
+            "summary": dataset.summary,
+            "stale": dataset.should_refresh_summary(),
+        },
+        "can_edit": user.can_edit_dataset(dataset),
+    }
+
+
+@router.get("/summarize/{dataset_id}")
+async def summarize_dataset(
+    dataset_id: str, user: User = Depends(get_current_active_user)
+):
+    dataset, _ = await validate_dataset_access(dataset_id, user)
+    await dataset.compute_summary()
+
+    return {
+        "contents": dataset.contents_id,
+        "summary": dataset.summary,
+        "stale": False,
+    }
+
+
 @router.get(path="/list")
 async def list_datasets(user: User = Depends(get_current_active_user)):
     datasets: List[Dataset] = list()
@@ -189,7 +277,10 @@ async def list_datasets(user: User = Depends(get_current_active_user)):
     else:
         all_associated_scopes = set(user.admin_scopes)
         for scope_id, mask in user.scoped_permissions.items():
-            if ScopedPermission(mask) & ScopedPermission.WEB_VISIBILITY == 0:
+            # Allow the user to see this dataset if they have ANY of the
+            # permissions listed in ScopedPermission.VIEW_DATASET. If they
+            # have none, then skip this dataset
+            if ScopedPermission(mask) & ScopedPermission.VIEW_DATASET == 0:
                 continue
 
             if scope_id not in all_associated_scopes:
@@ -197,7 +288,7 @@ async def list_datasets(user: User = Depends(get_current_active_user)):
 
         if all_associated_scopes:
             datasets = await Dataset.find(
-                {"scope_id": {"$in": list(all_associated_scopes)}}
+                In(Dataset.scope_id, list(all_associated_scopes))
             ).to_list()
 
     return [
@@ -206,6 +297,7 @@ async def list_datasets(user: User = Depends(get_current_active_user)):
             "name": dataset.name,
             "language": dataset.language,
             "region": dataset.region,
+            "can_edit": user.can_edit_dataset(dataset),
         }
         for dataset in datasets
     ]
