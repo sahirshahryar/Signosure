@@ -16,7 +16,10 @@ permissions:
     SCOPED_CONTRIBUTE: User can write their own data to this scope
     SCOPED_ANNOTATE: User can annotate data in this scope
 
-
+locale.en-US: English
+locale.de-DE: German
+locale.hi-HI: Hindi
+locale.ja-JP: Japanese
 
 ui:
   datasets: Datasets
@@ -27,15 +30,14 @@ ui:
   users: Users
   create_dataset: Create new dataset
 
-users:
-  reg:
-    email:
-      in-use: This email address is already in use. Please choose another.
-      invalid-format: The provided email address is not valid.
-    password:
-      too-short: Your password must be at least {$1} character{s:$1} long.
-      same-as-email: Your password cannot be the same as your email address.
-    code:
-      missing: Registration code is required.
-      invalid: Invalid or inactive registration code.
-    success: User successfully registered.
+users.reg.email.in-use @web @app: This email address is already in use. Please choose another.
+users.reg.invalid-format @web @app: The provided email address is not valid.
+users.reg.password.too-short @web @app:
+  text: Your password must be at least {plz:} long.
+  plz:
+    1: 1 character
+    else: '{plz} characters'
+users.reg.password.same-as-email @web @app: Your password cannot be the same as your email address.
+users.reg.code.missing @web @app: Registration code is required.
+users.reg.code.invalid @web @app: Invalid or inactive registration code.
+users.reg.success @web @app: User successfully registered.

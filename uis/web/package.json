@@ -37,6 +37,7 @@
 	},
 	"dependencies": {
 		"@inlang/paraglide-sveltekit": "^0.11.1",
-		"timeago.js": "^4.0.2"
+		"timeago.js": "^4.0.2",
+		"lib": "file:../../lib/ts"
 	}
 }
