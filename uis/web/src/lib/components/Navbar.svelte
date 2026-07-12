@@ -6,6 +6,7 @@
 
   type NavTab =
     | 'datasets'
+    | 'glossary'
     | 'collection'
     | 'processing'
     | 'annotation'
@@ -26,6 +27,7 @@
   // Tab configuration: maps tab ID to its route and translation function
   const tabConfig: Record<NavTab, { href: string; label: () => string }> = {
     datasets: { href: '/datasets', label: translations.datasets },
+    glossary: { href: '/glossary', label: translations.glossary },
     collection: { href: '/collection', label: translations.collection },
     processing: { href: '/processing', label: translations.processing },
     annotation: { href: '/annotation', label: translations.annotation },

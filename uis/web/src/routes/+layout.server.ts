@@ -14,6 +14,7 @@ export interface UserInfo {
 /** The tabs that can appear in the navbar */
 export type NavTab =
     | 'datasets'
+    | 'glossary'
     | 'collection'
     | 'processing'
     | 'annotation'
@@ -30,7 +31,7 @@ function computeVisibleTabs(user: UserInfo): NavTab[] {
 
     // Admins see everything
     if (user.admin) {
-        return ['datasets', 'collection', 'processing', 'annotation', 'visualization', 'users', 'questions'];
+        return ['datasets', 'glossary', 'collection', 'processing', 'annotation', 'visualization', 'users', 'questions'];
     }
 
     const unscoped = new Set(user.unscoped_permissions);
@@ -39,11 +40,12 @@ function computeVisibleTabs(user: UserInfo): NavTab[] {
     // Datasets: RESEARCHER | DATASET_EDITOR
     if (unscoped.has('RESEARCHER') || unscoped.has('DATASET_EDITOR')) {
         tabs.push('datasets');
+        tabs.push('collection');
     }
 
     // Collection: RESEARCHER | DATASET_EDITOR
     if (unscoped.has('RESEARCHER') || unscoped.has('DATASET_EDITOR')) {
-        tabs.push('collection');
+        tabs.push('glossary');
     }
 
     // Processing: RESEARCHER
