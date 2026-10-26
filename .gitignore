@@ -3,3 +3,4 @@
 .data/
 local.properties
 .idea/
+.threads/

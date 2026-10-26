@@ -128,7 +128,31 @@ class ScopedPermission(Flag):
 
     ANNOTATE = auto()
     """
-    Allows a user to annotate data in this scope.
+    Allows a user to annotate data in this scope. With this permission, users
+    can annotate only the videos that have been explicitly assigned to them.
+    """
+
+    OTHER_ANNOTATIONS_READ = auto()
+    """
+    Allows a user to see others' annotations on a clip. These include ratings,
+    re-trims, and comments. Disabling this can be useful to make sure reviewers
+    aren't influenced by prior annotations.
+    """
+
+    OTHER_ANNOTATIONS_WRITE = auto()
+    """
+    Allows a user to modify others' annotations on a clip, including ratings,
+    re-trims, and comments.
+    """
+
+    ANNOTATE_UNASSIGNED_READ = auto()
+    """
+    Allows a user to view annotations for clips that are not assigned to them.
+    """
+
+    ANNOTATE_UNASSIGNED_WRITE = auto()
+    """
+    Allows a user to annotate clips that have not been assigned to them.
     """
 
     VISUALIZE_DATA = auto()

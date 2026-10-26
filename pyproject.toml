@@ -1,0 +1,12 @@
+# Virtual workspace root. This file defines no package of its own; it exists so
+# that every Signosure service resolves shared workspace members (e.g.
+# `signosure-common`) from a single, consistent lockfile.
+[tool.uv.workspace]
+members = [
+    "services/annotation",
+    "services/common",
+    "services/core",
+    "services/processing",
+    "services/visualization",
+    "localization/py",
+]

@@ -4,4 +4,9 @@ version = "1.0.0"
 description = "Signosure data annotation service"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "signosure-common",
+]
+
+[tool.uv.sources]
+signosure-common = { workspace = true }
